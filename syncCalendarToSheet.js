@@ -6,7 +6,7 @@ function syncCalendarToSheet() {
   var sheet = ss.getSheetByName(sheetName);
   if (!sheet) sheet = ss.insertSheet(sheetName);
 
-  var header = ['calendarId', 'eventId', 'startDatetime', 'endDatetime', 'student', 'teacher', 'attendance'];
+  var header = ['CalendarId', 'EventId', 'StartDatetime', 'EndDatetime', 'Student', 'Teacher', 'Attendance'];
   sheet.clear();
   sheet.appendRow(header);
 
@@ -32,15 +32,30 @@ function syncCalendarToSheet() {
     pageToken = resp && resp.nextPageToken ? resp.nextPageToken : null;
   } while (pageToken);
 
+  function formatTaipei(dtStr) {
+    if (!dtStr) return '';
+    var dt = new Date(dtStr);
+    // 轉換為台灣時區 (UTC+8)
+    var taipei = new Date(dt.getTime() + 8 * 60 * 60 * 1000);
+    var yyyy = taipei.getUTCFullYear();
+    var mm = ('0' + (taipei.getUTCMonth() + 1)).slice(-2);
+    var dd = ('0' + taipei.getUTCDate()).slice(-2);
+    var hh = ('0' + taipei.getUTCHours()).slice(-2);
+    var min = ('0' + taipei.getUTCMinutes()).slice(-2);
+    var ss = ('0' + taipei.getUTCSeconds()).slice(-2);
+    return yyyy + '-' + mm + '-' + dd + ' ' + hh + ':' + min + ':' + ss;
+  }
   var rows = allEvents.map(function(ev) {
     var student = (ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.student) || '';
     var teacher = (ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.teacher) || '';
     var attendance = (ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.attendance) || '';
+    var startRaw = ev.start && (ev.start.dateTime || ev.start.date) || '';
+    var endRaw = ev.end && (ev.end.dateTime || ev.end.date) || '';
     return [
       calendarId,
       ev.id || '',
-      ev.start && (ev.start.dateTime || ev.start.date) || '',
-      ev.end && (ev.end.dateTime || ev.end.date) || '',
+      formatTaipei(startRaw),
+      formatTaipei(endRaw),
       student,
       teacher,
       attendance
