@@ -1,8 +1,7 @@
 function onEventOpen(e) {
-  var calendarId = e.calendar.calendarId;  
-  var eventId = e.calendar.id;  
+  var calendarId = e.calendar.calendarId;
+  var eventId = e.calendar.id;
 
-  // 若沒有 eventId（例如正在建立新事件），提示使用者選取既有事件
   if (!eventId) {
     var card = CardService.newCardBuilder()
       .addSection(CardService.newCardSection().addWidget(
@@ -15,14 +14,12 @@ function onEventOpen(e) {
   var existingValue = '';
   var existingValue2 = '';
   var existingAttendance = '';
-  var ev = null; // 事先宣告，避免後續存取時發生 ReferenceError
+  var ev = null;
   try {
     ev = Calendar.Events.get(calendarId, eventId);
-
     existingValue = (ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.student) || '';
     existingValue2 = (ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.teacher) || '';
     existingAttendance = (ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.attendance) || '';
-    // 建立點名 radio button
     var attendanceAction = CardService.newAction()
       .setFunctionName('saveAttendanceField')
       .setParameters({ calendarId: calendarId, eventId: eventId });
@@ -31,19 +28,17 @@ function onEventOpen(e) {
       .setFieldName('attendance')
       .setTitle('點名狀態')
       .addItem('未點名', '未點名', existingAttendance === '未點名' || !existingAttendance)
-      .addItem('出席', '出席', existingAttendance === '出席')    
+      .addItem('出席', '出席', existingAttendance === '出席')
       .addItem('缺席', '缺席', existingAttendance === '缺席')
       .addItem('請假', '請假', existingAttendance === '請假')
       .addItem('自習', '自習', existingAttendance === '自習')
       .setOnChangeAction(attendanceAction);
   } catch (err) {
-    // 取不到事件時，保持 existing 值為空並在下方顯示提示
     existingValue = '';
     existingValue2 = '';
     ev = null;
   }
 
-  // 若無法取得事件物件，提示使用者選擇既有事件後再使用功能
   if (!ev) {
     var card = CardService.newCardBuilder()
       .addSection(CardService.newCardSection().addWidget(
@@ -57,7 +52,6 @@ function onEventOpen(e) {
   var values = getSheetValues(sheetId, 'Students!B:B');
   var values2 = getSheetValues(sheetId, 'Teachers!B:B');
 
-  // 建立下拉選單
   var input = CardService.newSelectionInput()
     .setType(CardService.SelectionInputType.DROPDOWN)
     .setFieldName('student')
@@ -79,7 +73,6 @@ function onEventOpen(e) {
     .setFunctionName('saveCustomField')
     .setParameters({ calendarId: calendarId, eventId: eventId });
 
-  // Update the "儲存欄位" button to "批次更新" for students
   const studentBatchUpdateButton = CardService.newTextButton()
     .setText('批次更新')
     .setOnClickAction(CardService.newAction()
@@ -91,7 +84,6 @@ function onEventOpen(e) {
         eventId: eventId
       }));
 
-  // Add "單次更新" and "批次更新" buttons for teachers
   const teacherSingleUpdateButton = CardService.newTextButton()
     .setText('單次更新')
     .setOnClickAction(CardService.newAction()
@@ -114,14 +106,6 @@ function onEventOpen(e) {
         eventId: eventId
       }));
 
-  var countAction = CardService.newAction()
-    .setFunctionName('showCountCardAction')
-    .setParameters({ calendarId: calendarId, eventId: eventId, value: existingValue });
-/*
-  var countButton = CardService.newTextButton()
-    .setText('查詢此學生課堂數')
-    .setOnClickAction(countAction);
-*/
   var infoWidget = CardService.newKeyValue()
     .setTopLabel('目前標題')
     .setContent(ev.summary);
@@ -145,14 +129,9 @@ function onEventOpen(e) {
         .addWidget(studentBatchUpdateButton)
         .addWidget(input2)
         .addWidget(teacherSingleUpdateButton)
-        .addWidget(teacherBatchUpdateButton)        
+        .addWidget(teacherBatchUpdateButton)
         .addWidget(attendanceInput)
     )
-    /*
-    .addSection(
-      CardService.newCardSection()
-        .addWidget(countButton)
-    )*/
     .build();
 
   return [card];
@@ -170,7 +149,6 @@ function getSheetValues(sheetId, range) {
   var response = UrlFetchApp.fetch(url, params);
   var result = JSON.parse(response.getContentText());
   if (result.values && result.values.length > 1) {
-    // 跳過第一列（標題）
     return result.values.slice(1).map(function(row) { return row[0]; }).filter(function(v){ return v; });
   } else {
     return ['選項讀取失敗'];
@@ -210,13 +188,10 @@ function saveCustomField(e) {
       resource.summary = (ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.student || '') + '_(' + value2 + ')';
     }
 
-    // 單次更新只更新目前 event
     if (field === 'teacher' && updateType === 'single') {
       Calendar.Events.patch(resource, calendarId, eventId);
-      var attendance = (ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.attendance) || '未點名';
       syncEventToSheet();
     } else {
-      // 若此事件屬於一個 recurring series，則同時更新該 series 的所有 instances，並寫入 Sheet
       var masterId = ev && ev.recurringEventId ? ev.recurringEventId : null;
       if (masterId) {
         try {
@@ -233,17 +208,14 @@ function saveCustomField(e) {
           try {
             Calendar.Events.patch(resourceRecurring, calendarId, masterId);
           } catch (errMaster) {
-            // 可能無法更新 master（權限或不存在），忽略並繼續更新 instances
           }
 
-          // 列出 instances 並逐一更新；將要寫入 Sheet 的 events 收集起來，最後一次批次寫入以加速
           var instancesResp = Calendar.Events.instances(calendarId, masterId, { maxResults: 2500 });
           if (instancesResp && instancesResp.items && instancesResp.items.length) {
             var eventsToWrite = [];
             instancesResp.items.forEach(function(inst) {
               try {
                 Calendar.Events.patch(resourceRecurring, calendarId, inst.id);
-                // 取得 instance 的 attendance
                 var attendanceInst = (inst.extendedProperties && inst.extendedProperties.private && inst.extendedProperties.private.attendance) || '未點名';
                 eventsToWrite.push({
                   calendarId: calendarId,
@@ -255,7 +227,6 @@ function saveCustomField(e) {
                   attendance: attendanceInst
                 });
               } catch (errInst) {
-                // 個別 instance 更新失敗則記錄並繼續
                 Logger.log('Failed to patch instance %s: %s', inst.id, errInst.message);
               }
             });
@@ -269,12 +240,9 @@ function saveCustomField(e) {
             }
           }
         } catch (err2) {
-          
           Logger.log('Error updating recurring instances: %s', err2.message);
         }
       }else {
-        
-        var attendance = (ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.attendance) || '未點名';
         syncEventToSheet();
       }
     }
@@ -303,12 +271,11 @@ function saveAttendanceField(e) {
   var form = e && e.formInput ? e.formInput : {};
   var attendance = form.attendance || '未點名';
 
-  // 設定 colorId 對應
-  var colorId = '8'; // 預設灰色
-  if (attendance === '出席') colorId = '10'; // 綠色
-  else if (attendance === '請假') colorId = '5'; // 黃色
-  else if (attendance === '缺席') colorId = '11'; // 紅色
-  else if (attendance === '自習') colorId = '9'; // 藍色
+  var colorId = '8';
+  if (attendance === '出席') colorId = '10';
+  else if (attendance === '請假') colorId = '5';
+  else if (attendance === '缺席') colorId = '11';
+  else if (attendance === '自習') colorId = '9';
 
   if (!eventId) {
     var card = CardService.newCardBuilder()
@@ -347,77 +314,4 @@ function saveAttendanceField(e) {
 
 function syncEventToSheet() {
   syncCalendarToSheet.syncCalendarToSheet();
-}
-
-// Count events in a calendar whose extendedProperties.private.student equals fieldValue.
-// Uses Advanced Calendar service (Calendar.Events.list). Returns integer count.
-function countEventsByCustomField(calendarId, fieldValue, timeMin, timeMax) {
-  calendarId = calendarId || 'primary';
-  if (!fieldValue) return 0;
-
-  var args = {
-    singleEvents: true,
-    maxResults: 2500,
-    // filter by private extended property (Calendar API supports this)
-    privateExtendedProperty: 'student=' + fieldValue
-  };
-  if (timeMin) args.timeMin = (new Date(timeMin)).toISOString();
-  if (timeMax) args.timeMax = (new Date(timeMax)).toISOString();
-
-  var count = 0;
-  var pageToken = null;
-  do {
-    if (pageToken) args.pageToken = pageToken;
-    var resp = Calendar.Events.list(calendarId, args);
-    if (resp && resp.items && resp.items.length) {
-      count += resp.items.length;
-    }
-    pageToken = resp && resp.nextPageToken ? resp.nextPageToken : null;
-  } while (pageToken);
-
-  return count;
-}
-
-// Simple card action to show the count for a given value (can be wired to a button or run manually).
-function showCountCardAction(e) {
-  // e may be undefined when run from editor. Support parameters or formInput.
-  var params = (e && e.parameters) || {};
-  var form = (e && e.formInput) || {};
-  var calendarId = params.calendarId || 'primary';
-  var value = form.student || params.value || '查詢值';
-  var timeMin = params.timeMin || null;
-  var timeMax = params.timeMax || null;
-
-  var count = 0;
-  try {
-    count = countEventsByCustomField(calendarId, value, timeMin, timeMax);
-    return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText('學生：' + value + '，課堂數量：' + count))
-      .build();
-  } catch (err) {
-    return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText('查詢失敗：' + err.message))
-      .build();
-  }
-}
-
-// 批次寫入多筆 events 到 sheet：一次讀 header 和資料，使用 setValues 批次更新並 append 多列
-
-// helper: 建立一列完整的 array，依 header 順序填入 ev 的欄位
-function buildRowArrayFromHeader(header, ev) {
-  var row = [];
-  for (var i = 0; i < header.length; i++) {
-    var col = header[i];
-    switch(col) {
-      case 'calendarId': row.push(ev.calendarId || ''); break;
-      case 'eventId': row.push(ev.eventId || ''); break;
-      case 'startDatetime': row.push(ev.startDatetime || ''); break;
-      case 'endDatetime': row.push(ev.endDatetime || ''); break;
-      case 'student': row.push(ev.student || ''); break;
-      case 'teacher': row.push(ev.teacher || ''); break;
-      case 'attendance': row.push(ev.attendance || ''); break;
-      default: row.push(''); break;
-    }
-  }
-  return row;
 }
