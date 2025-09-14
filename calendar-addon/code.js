@@ -20,8 +20,8 @@ function onEventOpen(e) {
     return [createInfoCard('找不到事件資料，請先選擇既有事件。')];
   }
   var sheetId = '15EbnrqcDcvhlKOJ3L0cZxzRLiiZqQp-BrYSdwq1tnZ8';
-  var studentOptions = fetchSheetOptions(sheetId, 'Students!B:B');
-  var teacherOptions = fetchSheetOptions(sheetId, 'Teachers!B:B');
+  var studentOptions = fetchSheetOptions(sheetId, 'Students!A:B');
+  var teacherOptions = fetchSheetOptions(sheetId, 'Teachers!A:B');
   var studentDropdown = createDropdown('student', '學生', studentOptions, studentValue);
   var teacherDropdown = createDropdown('teacher', '老師', teacherOptions, teacherValue, 3);
   var attendanceRadio = createAttendanceRadio(attendanceValue, calendarId, eventId);
@@ -65,14 +65,15 @@ function fetchSheetOptions(sheetId, range) {
   };
   var response = UrlFetchApp.fetch(url, params);
   var result = JSON.parse(response.getContentText());
+  var arr = [];
   if (result.values && result.values.length > 1) {
-    var arr = [];
     for (var i = 1; i < result.values.length; i++) {
-      if (result.values[i][0]) arr.push(result.values[i][0]);
+      var row = result.values[i];
+      if (row[0] && row[1]) arr.push({ id: row[0], name: row[1] });
     }
     return arr;
   }
-  return ['選項讀取失敗'];
+  return [{ id: '', name: '選項讀取失敗' }];
 }
 
 function createDropdown(fieldName, title, options, selected, maxSelect) {
@@ -82,7 +83,7 @@ function createDropdown(fieldName, title, options, selected, maxSelect) {
     .setTitle(title);
   if (maxSelect) dropdown.setMultiSelectMaxSelectedItems(maxSelect);
   for (var i = 0; i < options.length; i++) {
-    dropdown.addItem(options[i], options[i], selected === options[i]);
+    dropdown.addItem(options[i].name, options[i].id, selected === options[i].id);
   }
   return dropdown;
 }
@@ -105,19 +106,36 @@ function createUpdateButton(field, updateType, calendarId, eventId, text) {
   return CardService.newTextButton()
     .setText(text)
     .setOnClickAction(CardService.newAction()
-      .setFunctionName('saveCustomField')
+      .setFunctionName('saveField')
       .setParameters({ field: field, updateType: updateType, calendarId: calendarId, eventId: eventId }));
 }
 
-function saveCustomField(e) {
+function saveField(e) {
   var params = (e && e.parameters) || {};
   var calendarId = params.calendarId || 'primary';
   var eventId = params.eventId;
   var form = e && e.formInput ? e.formInput : {};
-  var student = form.student || '';
-  var teacher = form.teacher || '';
+  var studentId = form.student || '';
+  var teacherId = form.teacher || '';
   var field = params.field;
   var updateType = params.updateType;
+  var sheetId = '15EbnrqcDcvhlKOJ3L0cZxzRLiiZqQp-BrYSdwq1tnZ8';
+  var studentOptions = fetchSheetOptions(sheetId, 'Students!A:B');
+  var teacherOptions = fetchSheetOptions(sheetId, 'Teachers!A:B');
+  var studentName = '';
+  var teacherName = '';
+  for (var i = 0; i < studentOptions.length; i++) {
+    if (studentOptions[i].id === studentId) {
+      studentName = studentOptions[i].name;
+      break;
+    }
+  }
+  for (var j = 0; j < teacherOptions.length; j++) {
+    if (teacherOptions[j].id === teacherId) {
+      teacherName = teacherOptions[j].name;
+      break;
+    }
+  }
   if (!eventId) {
     return CardService.newActionResponseBuilder().setNavigation(CardService.newNavigation().pushCard(createInfoCard('找不到事件 ID，無法儲存。'))).build();
   }
@@ -125,11 +143,28 @@ function saveCustomField(e) {
     var event = Calendar.Events.get(calendarId, eventId);
     var resource = { extendedProperties: { private: {} }, colorId: '1' };
     if (field === 'student') {
-      resource.extendedProperties.private.student = student;
-      resource.summary = student + '_(' + ((event.extendedProperties && event.extendedProperties.private && event.extendedProperties.private.teacher) || '') + ')';
+      resource.extendedProperties.private.student = studentId;
+      // 取得目前老師ID，轉成name
+      var currentTeacherId = (event.extendedProperties && event.extendedProperties.private && event.extendedProperties.private.teacher) || '';
+      var currentTeacherName = '';
+      for (var k = 0; k < teacherOptions.length; k++) {
+        if (teacherOptions[k].id === currentTeacherId) {
+          currentTeacherName = teacherOptions[k].name;
+          break;
+        }
+      }
+      resource.summary = studentName + '_(' + currentTeacherName + ')';
     } else if (field === 'teacher') {
-      resource.extendedProperties.private.teacher = teacher;
-      resource.summary = ((event.extendedProperties && event.extendedProperties.private && event.extendedProperties.private.student) || '') + '_(' + teacher + ')';
+      resource.extendedProperties.private.teacher = teacherId;
+      var currentStudentId = (event.extendedProperties && event.extendedProperties.private && event.extendedProperties.private.student) || '';
+      var currentStudentName = '';
+      for (var k = 0; k < studentOptions.length; k++) {
+        if (studentOptions[k].id === currentStudentId) {
+          currentStudentName = studentOptions[k].name;
+          break;
+        }
+      }
+      resource.summary = currentStudentName + '_(' + teacherName + ')';
     }
     if (field === 'teacher' && updateType === 'single') {
       Calendar.Events.patch(resource, calendarId, eventId);
@@ -139,8 +174,8 @@ function saveCustomField(e) {
       if (masterId) {
         try {
           var resourceRecurring = {
-            summary: student + '_(' + teacher + ')',
-            extendedProperties: { private: { student: student, teacher: teacher } },
+            summary: studentName + '_(' + teacherName + ')',
+            extendedProperties: { private: { student: studentId, teacher: teacherId } },
             colorId: '1'
           };
           try { Calendar.Events.patch(resourceRecurring, calendarId, masterId); } catch (errMaster) {}
@@ -152,7 +187,7 @@ function saveCustomField(e) {
               try {
                 Calendar.Events.patch(resourceRecurring, calendarId, inst.id);
                 var attendanceInst = (inst.extendedProperties && inst.extendedProperties.private && inst.extendedProperties.private.attendance) || '未點名';
-                eventsToWrite.push({ calendarId: calendarId, eventId: inst.id, startDatetime: inst.start && (inst.start.dateTime || inst.start.date), endDatetime: inst.end && (inst.end.dateTime || inst.end.date), student: student, teacher: teacher, attendance: attendanceInst });
+                eventsToWrite.push({ calendarId: calendarId, eventId: inst.id, startDatetime: inst.start && (inst.start.dateTime || inst.start.date), endDatetime: inst.end && (inst.end.dateTime || inst.end.date), student: studentId, teacher: teacherId, attendance: attendanceInst });
               } catch (errInst) {
                 Logger.log('Failed to patch instance %s: %s', inst.id, errInst.message);
               }
@@ -165,6 +200,7 @@ function saveCustomField(e) {
           Logger.log('Error updating recurring instances: %s', err2.message);
         }
       } else {
+        Calendar.Events.patch(resource, calendarId, eventId);
         syncEventToSheet();
       }
     }
