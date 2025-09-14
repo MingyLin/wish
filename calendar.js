@@ -214,15 +214,7 @@ function saveCustomField(e) {
     if (field === 'teacher' && updateType === 'single') {
       Calendar.Events.patch(resource, calendarId, eventId);
       var attendance = (ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.attendance) || '未點名';
-      writeEventToSheet({
-        calendarId: calendarId,
-        eventId: eventId,
-        startDatetime: ev.start && (ev.start.dateTime || ev.start.date),
-        endDatetime: ev.end && (ev.end.dateTime || ev.end.date),
-        student: (ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.student) || '',
-        teacher: value2,
-        attendance: attendance
-      });
+      syncEventToSheet();
     } else {
       // 若此事件屬於一個 recurring series，則同時更新該 series 的所有 instances，並寫入 Sheet
       var masterId = ev && ev.recurringEventId ? ev.recurringEventId : null;
@@ -267,36 +259,23 @@ function saveCustomField(e) {
                 Logger.log('Failed to patch instance %s: %s', inst.id, errInst.message);
               }
             });
-            // 批次寫入 sheet
+
             if (eventsToWrite.length) {
               try {
-                writeEventsToSheetBulk(eventsToWrite);
+                syncEventToSheet();
               } catch (errBulk) {
-                Logger.log('Bulk write to sheet failed: %s', errBulk.message);
-                // fallback: 單筆寫入以確保資料至少嘗試被寫入
-                eventsToWrite.forEach(function(evItem){
-                  try { writeEventToSheet(evItem); } catch(e){ Logger.log('Fallback write failed for %s: %s', evItem.eventId, e.message); }
-                });
+                Logger.log('Bulk sync to sheet failed: %s', errBulk.message);
               }
             }
           }
         } catch (err2) {
-          // 若列出 instances 或更新發生錯誤，記錄但不阻斷主流程
+          
           Logger.log('Error updating recurring instances: %s', err2.message);
         }
       }else {
-        // 取得 attendance
+        
         var attendance = (ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.attendance) || '未點名';
-        // 寫入 Google Sheet
-        writeEventToSheet({
-          calendarId: calendarId,
-          eventId: eventId,
-          startDatetime: ev.start && (ev.start.dateTime || ev.start.date),
-          endDatetime: ev.end && (ev.end.dateTime || ev.end.date),
-          student: value,
-          teacher: value2,
-          attendance: attendance
-        });
+        syncEventToSheet();
       }
     }
 
@@ -351,19 +330,8 @@ function saveAttendanceField(e) {
       colorId: colorId
     };
     Calendar.Events.patch(resource, calendarId, eventId);
-    // 取得 student/teacher
-    var student = (ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.student) || '';
-    var teacher = (ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.teacher) || '';
-    // 寫入 Google Sheet
-    writeEventToSheet({
-      calendarId: calendarId,
-      eventId: eventId,
-      startDatetime: ev.start && (ev.start.dateTime || ev.start.date),
-      endDatetime: ev.end && (ev.end.dateTime || ev.end.date),
-      student: student,
-      teacher: teacher,
-      attendance: attendance
-    });
+
+    syncEventToSheet();
     return CardService.newActionResponseBuilder()
       .setNotification(CardService.newNotification().setText('點名已儲存'))
       .build();
@@ -377,54 +345,8 @@ function saveAttendanceField(e) {
   }
 }
 
-function writeEventToSheet(data) {
-  var sheetId = '15EbnrqcDcvhlKOJ3L0cZxzRLiiZqQp-BrYSdwq1tnZ8';
-  var sheetName = 'Calendar';
-  var ss = SpreadsheetApp.openById(sheetId);
-  var sheet = ss.getSheetByName(sheetName);
-  if (!sheet) return;
-  // 預設 attendance
-  if (!data.attendance) data.attendance = '未點名';
-  var rows = sheet.getDataRange().getValues();
-  var header = rows[0];
-  var idx = {
-    calendarId: header.indexOf('calendarId'),
-    eventId: header.indexOf('eventId'),
-    startDatetime: header.indexOf('startDatetime'),
-    endDatetime: header.indexOf('endDatetime'),
-    student: header.indexOf('student'),
-    teacher: header.indexOf('teacher'),
-    attendance: header.indexOf('attendance')
-  };
-  var found = false;
-  for (var i = 1; i < rows.length; i++) {
-    if (rows[i][idx.calendarId] == data.calendarId && rows[i][idx.eventId] == data.eventId) {
-      // 更新
-      sheet.getRange(i+1, idx.startDatetime+1).setValue(data.startDatetime);
-      sheet.getRange(i+1, idx.endDatetime+1).setValue(data.endDatetime);
-      sheet.getRange(i+1, idx.student+1).setValue(data.student);
-      sheet.getRange(i+1, idx.teacher+1).setValue(data.teacher);
-      sheet.getRange(i+1, idx.attendance+1).setValue(data.attendance);
-      found = true;
-      break;
-    }
-  }
-  if (!found) {
-    // 新增
-    var newRow = [];
-    newRow[idx.calendarId] = data.calendarId;
-    newRow[idx.eventId] = data.eventId;
-    newRow[idx.startDatetime] = data.startDatetime;
-    newRow[idx.endDatetime] = data.endDatetime;
-    newRow[idx.student] = data.student;
-    newRow[idx.teacher] = data.teacher;
-    newRow[idx.attendance] = data.attendance;
-    // 填補空欄
-    for (var k = 0; k < header.length; k++) {
-      if (typeof newRow[k] === 'undefined') newRow[k] = '';
-    }
-    sheet.appendRow(newRow);
-  }
+function syncEventToSheet() {
+  syncCalendarToSheet.syncCalendarToSheet();
 }
 
 // Count events in a calendar whose extendedProperties.private.student equals fieldValue.
@@ -480,79 +402,6 @@ function showCountCardAction(e) {
 }
 
 // 批次寫入多筆 events 到 sheet：一次讀 header 和資料，使用 setValues 批次更新並 append 多列
-function writeEventsToSheetBulk(events) {
-  if (!events || !events.length) return;
-  var sheetId = '15EbnrqcDcvhlKOJ3L0cZxzRLiiZqQp-BrYSdwq1tnZ8';
-  var sheetName = 'Calendar';
-  var ss = SpreadsheetApp.openById(sheetId);
-  var sheet = ss.getSheetByName(sheetName);
-  if (!sheet) return;
-
-  var dataRange = sheet.getDataRange();
-  var rows = dataRange.getValues();
-  var header = rows[0];
-  var idx = {
-    calendarId: header.indexOf('calendarId'),
-    eventId: header.indexOf('eventId'),
-    startDatetime: header.indexOf('startDatetime'),
-    endDatetime: header.indexOf('endDatetime'),
-    student: header.indexOf('student'),
-    teacher: header.indexOf('teacher'),
-    attendance: header.indexOf('attendance')
-  };
-
-  // 建立 map 以快速查找現有 row index（key = calendarId|eventId）
-  var rowMap = {};
-  for (var i = 1; i < rows.length; i++) {
-    var key = (rows[i][idx.calendarId] || '') + '|' + (rows[i][idx.eventId] || '');
-    rowMap[key] = i; // 0-based index within rows
-  }
-
-  // 將更新與新增分開處理
-  var updates = [];
-  var appends = [];
-  events.forEach(function(ev) {
-    var key = (ev.calendarId || '') + '|' + (ev.eventId || '');
-    if (rowMap.hasOwnProperty(key)) {
-      var rowIdx = rowMap[key];
-      // 更新到 updates array (store row number and values)
-      updates.push({ row: rowIdx + 1, // convert to 1-based sheet row
-                     values: buildRowArrayFromHeader(header, ev) });
-    } else {
-      appends.push(buildRowArrayFromHeader(header, ev));
-    }
-  });
-
-  // 批次更新：採用一次 setValues 修改所有需更新的區塊（按連續區段合併以減少 API 呼叫）
-  if (updates.length) {
-    // 將 updates 按 row 排序
-    updates.sort(function(a,b){ return a.row - b.row; });
-    // 合併連續區段
-    var segStart = updates[0].row;
-    var segValues = [updates[0].values];
-    var prevRow = updates[0].row;
-    for (var u = 1; u < updates.length; u++) {
-      if (updates[u].row === prevRow + 1) {
-        segValues.push(updates[u].values);
-        prevRow = updates[u].row;
-      } else {
-        // flush segment
-        sheet.getRange(segStart, 1, segValues.length, header.length).setValues(segValues);
-        // start new segment
-        segStart = updates[u].row;
-        segValues = [updates[u].values];
-        prevRow = updates[u].row;
-      }
-    }
-    // flush last segment
-    sheet.getRange(segStart, 1, segValues.length, header.length).setValues(segValues);
-  }
-
-  // 批次 append
-  if (appends.length) {
-    sheet.getRange(sheet.getLastRow() + 1, 1, appends.length, header.length).setValues(appends);
-  }
-}
 
 // helper: 建立一列完整的 array，依 header 順序填入 ev 的欄位
 function buildRowArrayFromHeader(header, ev) {
