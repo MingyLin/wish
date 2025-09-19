@@ -25,9 +25,10 @@ function onEventOpen(e) {
   var studentDropdown = createDropdown('student', '學生', studentOptions, studentValue);
   var teacherDropdown = createDropdown('teacher', '老師', teacherOptions, teacherValue, 3);
   var attendanceRadio = createAttendanceRadio(attendanceValue, calendarId, eventId);
-  var studentBatchBtn = createUpdateButton('student', 'batch', calendarId, eventId, '批次更新');
-  var teacherSingleBtn = createUpdateButton('teacher', 'single', calendarId, eventId, '單次更新');
-  var teacherBatchBtn = createUpdateButton('teacher', 'batch', calendarId, eventId, '批次更新');
+  var studentBatchBtn = createUpdateButton('student', 'batch', calendarId, eventId, '更新所有活動');
+  var teacherSingleBtn = createUpdateButton('teacher', 'single', calendarId, eventId, '更新這項活動');
+  var teacherFutureBtn = createUpdateButton('teacher', 'future', calendarId, eventId, '更新這項活動和後續活動');
+  var teacherBatchBtn = createUpdateButton('teacher', 'batch', calendarId, eventId, '更新所有活動');
   var infoWidget = CardService.newKeyValue().setTopLabel('目前標題').setContent(event.summary);
   var creatorWidget = CardService.newKeyValue().setTopLabel('建立者').setContent(event.creator.email);
   var updatedWidget = CardService.newKeyValue().setTopLabel('異動時間').setContent(event.updated);
@@ -41,6 +42,7 @@ function onEventOpen(e) {
       .addWidget(studentBatchBtn)
       .addWidget(teacherDropdown)
       .addWidget(teacherSingleBtn)
+      .addWidget(teacherFutureBtn)
       .addWidget(teacherBatchBtn)
       .addWidget(attendanceRadio)
     )
@@ -169,6 +171,51 @@ function saveField(e) {
     if (field === 'teacher' && updateType === 'single') {
       Calendar.Events.patch(resource, calendarId, eventId);
       syncEventToSheet();
+    } else if (updateType === 'future') {
+      var masterId = event && event.recurringEventId ? event.recurringEventId : null;
+      if (masterId) {
+        try {
+          var resourceRecurring = {
+            summary: studentName + '_(' + teacherName + ')',
+            extendedProperties: { private: { student: studentId, teacher: teacherId } },
+            colorId: '1'
+          };
+          var instancesResp = Calendar.Events.instances(calendarId, masterId, { maxResults: 2500 });
+          if (instancesResp && instancesResp.items && instancesResp.items.length) {
+            var eventsToWrite = [];
+            var currentInst = null;
+            for (var i = 0; i < instancesResp.items.length; i++) {
+              var inst = instancesResp.items[i];
+              if (inst.id === eventId) {
+                currentInst = inst;
+                break;
+              }
+            }
+            var currentStart = currentInst && (currentInst.start && (currentInst.start.dateTime || currentInst.start.date));
+            for (var i = 0; i < instancesResp.items.length; i++) {
+              var inst = instancesResp.items[i];
+              var instStart = inst.start && (inst.start.dateTime || inst.start.date);
+              if (currentStart && instStart >= currentStart) {
+                try {
+                  Calendar.Events.patch(resourceRecurring, calendarId, inst.id);
+                  var attendanceInst = (inst.extendedProperties && inst.extendedProperties.private && inst.extendedProperties.private.attendance) || '未點名';
+                  eventsToWrite.push({ calendarId: calendarId, eventId: inst.id, startDatetime: instStart, endDatetime: inst.end && (inst.end.dateTime || inst.end.date), student: studentId, teacher: teacherId, attendance: attendanceInst });
+                } catch (errInst) {
+                  Logger.log('Failed to patch instance %s: %s', inst.id, errInst.message);
+                }
+              }
+            }
+            if (eventsToWrite.length) {
+              try { syncEventToSheet(); } catch (errBulk) { Logger.log('Bulk sync to sheet failed: %s', errBulk.message); }
+            }
+          }
+        } catch (err2) {
+          Logger.log('Error updating future instances: %s', err2.message);
+        }
+      } else {
+        Calendar.Events.patch(resource, calendarId, eventId);
+        syncEventToSheet();
+      }
     } else {
       var masterId = event && event.recurringEventId ? event.recurringEventId : null;
       if (masterId) {

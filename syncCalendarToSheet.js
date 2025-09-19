@@ -11,7 +11,7 @@ function syncCalendarToSheet() {
   sheet.appendRow(header);
 
   var now = new Date();
-  var timeMinDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+  var timeMinDate = new Date(2025, 8, 1);
   var timeMaxDate = new Date(now.getFullYear(), now.getMonth() + 6, now.getDate());
   var timeMin = timeMinDate.toISOString();
   var timeMax = timeMaxDate.toISOString();
