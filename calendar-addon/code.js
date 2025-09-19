@@ -276,6 +276,43 @@ function saveAttendanceField(e) {
     var resource = { extendedProperties: { private: { attendance: attendance } }, colorId: colorId };
     Calendar.Events.patch(resource, calendarId, eventId);
     syncEventToSheet();
+
+    var prevAttendance = (event.extendedProperties && event.extendedProperties.private && event.extendedProperties.private.attendance) || '';
+    var isPrevAttend = (prevAttendance === '出席' || prevAttendance === '缺席');
+    var isNewAttend = (attendance === '出席' || attendance === '缺席');
+
+    var amount = 0;
+
+    if (isPrevAttend && !isNewAttend) {
+      amount = 1;
+    }else if (!isPrevAttend && isNewAttend) {
+      amount = -1;
+    }
+
+    if (amount !== 0) {
+      var sheetId = '15EbnrqcDcvhlKOJ3L0cZxzRLiiZqQp-BrYSdwq1tnZ8';
+      var ss = SpreadsheetApp.openById(sheetId);
+      var sheet = ss.getSheetByName('StudentPurchaseHistory');
+      if (!sheet) sheet = ss.insertSheet('StudentPurchaseHistory');
+
+      var studentId = (event.extendedProperties && event.extendedProperties.private && event.extendedProperties.private.student) || '';
+
+      var classDateRaw = event.start && (event.start.dateTime || event.start.date) || '';
+      var classDateObj = classDateRaw ? new Date(classDateRaw) : null;
+      var classDate = classDateObj ? (classDateObj.getFullYear() + '-' + ('0' + (classDateObj.getMonth() + 1)).slice(-2) + '-' + ('0' + classDateObj.getDate()).slice(-2)) : '';
+
+      var randId = genId();
+
+      var now = new Date();
+      var yyyy = now.getFullYear();
+      var mm = ('0' + (now.getMonth() + 1)).slice(-2);
+      var dd = ('0' + now.getDate()).slice(-2);
+      var hh = ('0' + now.getHours()).slice(-2);
+      var min = ('0' + now.getMinutes()).slice(-2);
+      var nowStr = yyyy + '-' + mm + '-' + dd + ' ' + hh + ':' + min;
+
+      sheet.appendRow([randId, studentId, classDate, amount, 'addon', nowStr, 'addon', nowStr]);
+    }
     return CardService.newActionResponseBuilder().setNotification(CardService.newNotification().setText('點名已儲存')).build();
   } catch (err) {
     return CardService.newActionResponseBuilder().setNavigation(CardService.newNavigation().pushCard(createInfoCard('點名儲存失敗：' + err.message))).build();
@@ -284,4 +321,13 @@ function saveAttendanceField(e) {
 
 function syncEventToSheet() {
   syncCalendarToSheet.syncCalendarToSheet();
+}
+
+function genId() {
+  var chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  var id = '';
+  for (var i = 0; i < 10; i++) {
+    id += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return id;
 }
