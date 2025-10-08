@@ -96,8 +96,8 @@ function syncPurchaseHistoryToReport() {
 function writeToDest(rows) {
     var destId = '1EsDKBw0malhT8o0s_OF28QMnNfScTerF-FK-9W36GOE';
     var destSs = SpreadsheetApp.openById(destId);
-    var destSheet = destSs.getSheetByName('data');
-    if (!destSheet) destSheet = destSs.insertSheet('data');
+    var destSheet = destSs.getSheetByName('stock');
+    if (!destSheet) destSheet = destSs.insertSheet('stock');
     // 清空並寫入 header + rows
     destSheet.clear();
 	var headerOut = ['學生', 'category', 'title', '數量', '日期', 'InRange'];
