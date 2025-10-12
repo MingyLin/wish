@@ -292,8 +292,8 @@ function saveAttendanceField(e) {
     if (amount !== 0) {
       var sheetId = '15EbnrqcDcvhlKOJ3L0cZxzRLiiZqQp-BrYSdwq1tnZ8';
       var ss = SpreadsheetApp.openById(sheetId);
-      var sheet = ss.getSheetByName('StudentPurchaseHistory');
-      if (!sheet) sheet = ss.insertSheet('StudentPurchaseHistory');
+      var sheet = ss.getSheetByName('StockHistory');
+      if (!sheet) sheet = ss.insertSheet('StockHistory');
 
       var studentId = (event.extendedProperties && event.extendedProperties.private && event.extendedProperties.private.student) || '';
 

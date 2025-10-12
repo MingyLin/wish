@@ -1,9 +1,9 @@
 function syncPurchaseHistoryToReport() {
 	var srcId = '15EbnrqcDcvhlKOJ3L0cZxzRLiiZqQp-BrYSdwq1tnZ8';
 	var srcSs = SpreadsheetApp.openById(srcId);
-	var srcSheet = srcSs.getSheetByName('StudentPurchaseHistory');
+	var srcSheet = srcSs.getSheetByName('StockHistory');
 	if (!srcSheet) {
-		throw new Error('找不到來源分頁 StudentPurchaseHistory');
+		throw new Error('找不到來源分頁 StockHistory');
 	}
 
 	// 讀取 Students 對照表
@@ -110,8 +110,8 @@ function writeToDest(rows) {
 		var dateCol = headerOut.indexOf('日期') + 1; // E 欄
 		for (var i = 0; i < rows.length; i++) {
 			var rowIdx = i + 2;
-			// 公式：=AND(E2 >= report!B$1, E2 <= report!D$1)
-			var formula = '=AND(E' + rowIdx + '>=report!B$1,E' + rowIdx + '<=report!D$1)';
+			// 公式：=AND(E2 >= 'stock-report'!B$1, E2 <= 'stock-report'!D$1)
+			var formula = '=AND(E' + rowIdx + " >= 'stock-report'!B$1, E" + rowIdx + " <= 'stock-report'!D$1)";
 			destSheet.getRange(rowIdx, inRangeCol).setFormula(formula);
 		}
 	}
