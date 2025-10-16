@@ -99,7 +99,9 @@ function createAttendanceRadio(selected, calendarId, eventId) {
     .addItem('出席', '出席', selected === '出席')
     .addItem('缺席', '缺席', selected === '缺席')
     .addItem('請假', '請假', selected === '請假')
+    .addItem('補課', '補課', selected === '補課')
     .addItem('自習', '自習', selected === '自習')
+    .addItem('試聽', '試聽', selected === '試聽')
     .setOnChangeAction(CardService.newAction().setFunctionName('saveAttendanceField').setParameters({ calendarId: calendarId, eventId: eventId }));
   return radio;
 }
@@ -267,7 +269,9 @@ function saveAttendanceField(e) {
   if (attendance === '出席') colorId = '10';
   else if (attendance === '請假') colorId = '5';
   else if (attendance === '缺席') colorId = '11';
-  else if (attendance === '自習') colorId = '9';
+  else if (attendance === '補課') colorId = '6';
+  else if (attendance === '自習') colorId = '3';
+  else if (attendance === '試聽') colorId = '2';
   if (!eventId) {
     return CardService.newActionResponseBuilder().setNavigation(CardService.newNavigation().pushCard(createInfoCard('找不到事件 ID，無法儲存點名。'))).build();
   }
