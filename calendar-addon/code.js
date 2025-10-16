@@ -20,8 +20,8 @@ function onEventOpen(e) {
     return [createInfoCard('找不到事件資料，請先選擇既有事件。')];
   }
   var sheetId = '15EbnrqcDcvhlKOJ3L0cZxzRLiiZqQp-BrYSdwq1tnZ8';
-  var studentOptions = fetchSheetOptions(sheetId, 'Students!A:B');
-  var teacherOptions = fetchSheetOptions(sheetId, 'Teachers!A:B');
+  var studentOptions = fetchSheetOptions(sheetId, 'Students!A:C', true);  // 包含 EntranceYear
+  var teacherOptions = fetchSheetOptions(sheetId, 'Teachers!A:B');        // 保持原樣
   var studentDropdown = createDropdown('student', '學生', studentOptions, studentValue);
   var teacherDropdown = createDropdown('teacher', '老師', teacherOptions, teacherValue, 3);
   var attendanceRadio = createAttendanceRadio(attendanceValue, calendarId, eventId);
@@ -58,7 +58,7 @@ function createInfoCard(message) {
     .build();
 }
 
-function fetchSheetOptions(sheetId, range) {
+function fetchSheetOptions(sheetId, range, includeThirdColumn) {
   var url = 'https://sheets.googleapis.com/v4/spreadsheets/' + sheetId + '/values/' + encodeURIComponent(range);
   var params = {
     method: 'get',
@@ -71,7 +71,16 @@ function fetchSheetOptions(sheetId, range) {
   if (result.values && result.values.length > 1) {
     for (var i = 1; i < result.values.length; i++) {
       var row = result.values[i];
-      if (row[0] && row[1]) arr.push({ id: row[0], name: row[1] });
+      if (row[0] && row[1]) {
+        var option = { id: row[0], name: row[1] };
+        // 如果需要第三欄（EntranceYear），加入到選項中
+        if (includeThirdColumn && row[2]) {
+          option.entranceYear = row[2];
+          // 在顯示名稱中加入年份
+          option.name = row[1] + ' (' + (new Date().getFullYear() - 1903 - (new Date().getMonth() > 8 ? 1 : 0) - row[2]) + ')';
+        }
+        arr.push(option);
+      }
     }
     return arr;
   }
@@ -124,8 +133,8 @@ function saveField(e) {
   var field = params.field;
   var updateType = params.updateType;
   var sheetId = '15EbnrqcDcvhlKOJ3L0cZxzRLiiZqQp-BrYSdwq1tnZ8';
-  var studentOptions = fetchSheetOptions(sheetId, 'Students!A:B');
-  var teacherOptions = fetchSheetOptions(sheetId, 'Teachers!A:B');
+  var studentOptions = fetchSheetOptions(sheetId, 'Students!A:C', true);  // 包含 EntranceYear
+  var teacherOptions = fetchSheetOptions(sheetId, 'Teachers!A:B');        // 保持原樣
   var studentName = '';
   var teacherName = '';
   for (var i = 0; i < studentOptions.length; i++) {
