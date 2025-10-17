@@ -73,11 +73,11 @@ function fetchSheetOptions(sheetId, range, includeThirdColumn) {
       var row = result.values[i];
       if (row[0] && row[1]) {
         var option = { id: row[0], name: row[1] };
-        // 如果需要第三欄（EntranceYear），加入到選項中
         if (includeThirdColumn && row[2]) {
           option.entranceYear = row[2];
-          // 在顯示名稱中加入年份
-          option.name = row[1] + ' (' + (new Date().getFullYear() - 1903 - (new Date().getMonth() > 8 ? 1 : 0) - row[2]) + ')';
+          option.name = row[0] + '.' + row[1] + ' (' + (new Date().getFullYear() - 1903 - (new Date().getMonth() > 8 ? 1 : 0) - row[2]) + '年級)';
+        } else if (includeThirdColumn) {
+          option.name = row[0] + '.' + row[1];
         }
         arr.push(option);
       }
