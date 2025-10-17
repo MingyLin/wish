@@ -1,1 +1,50 @@
-{  "urlFetchWhitelist": [    "https://sheets.googleapis.com/"  ],  "timeZone": "Asia/Taipei",  "dependencies": {    "enabledAdvancedServices": [      {        "userSymbol": "Calendar",        "serviceId": "calendar",        "version": "v3"      },      {        "userSymbol": "Sheets",        "serviceId": "sheets",        "version": "v4"      }    ],    "libraries": [      {        "userSymbol": "syncCalendarToSheet",        "version": "0",        "libraryId": "1oJk7VaWGUzJ5A2EUGcQSUpxHkmu98XeHl0tkIQ7d6hdJHRIAQvw-zGkU",        "developmentMode": true      }    ]  },  "oauthScopes": [    "https://www.googleapis.com/auth/calendar.events.readonly",    "https://www.googleapis.com/auth/userinfo.email",    "https://www.googleapis.com/auth/script.external_request",    "https://www.googleapis.com/auth/script.locale",    "https://www.googleapis.com/auth/calendar",    "https://www.googleapis.com/auth/calendar.readonly",    "https://www.googleapis.com/auth/calendar.addons.execute",    "https://www.googleapis.com/auth/spreadsheets"  ],  "addOns": {    "common": {      "name": "¬I¶W∫Î∆F",      "logoUrl": "https://img.lovepik.com/element/40031/9647.png_300.png",      "useLocaleFromApp": true    },    "calendar": {      "eventOpenTrigger": {        "runFunction": "onEventOpen"      }    }  }}
+{
+  "urlFetchWhitelist": [
+    "https://sheets.googleapis.com/"
+  ],
+  "timeZone": "Asia/Taipei",
+  "dependencies": {
+    "enabledAdvancedServices": [
+      {
+        "userSymbol": "Calendar",
+        "serviceId": "calendar",
+        "version": "v3"
+      },
+      {
+        "userSymbol": "Sheets",
+        "serviceId": "sheets",
+        "version": "v4"
+      }
+    ],
+    "libraries": [
+      {
+        "userSymbol": "syncCalendarToSheet",
+        "version": "0",
+        "libraryId": "1oJk7VaWGUzJ5A2EUGcQSUpxHkmu98XeHl0tkIQ7d6hdJHRIAQvw-zGkU",
+        "developmentMode": true
+      }
+    ]
+  },
+  "oauthScopes": [
+    "https://www.googleapis.com/auth/calendar.events.readonly",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/script.external_request",
+    "https://www.googleapis.com/auth/script.locale",
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/calendar.readonly",
+    "https://www.googleapis.com/auth/calendar.addons.execute",
+    "https://www.googleapis.com/auth/spreadsheets"
+  ],
+  "addOns": {
+    "common": {
+      "name": "Ê†©ËãëÈªûÈªûÂêç",
+      "logoUrl": "https://lh3.googleusercontent.com/d/1kRYnmIH6KmxkN6--zSi9eKP-1g4yN8MK=w1366?authuser=0",
+      "useLocaleFromApp": true
+    },
+    "calendar": {
+      "eventOpenTrigger": {
+        "runFunction": "onEventOpen"
+      }
+    }
+  }
+}
