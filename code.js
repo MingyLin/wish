@@ -403,3 +403,484 @@ function genId() {
   }
   return id;
 }
+
+function syncCalendarToSheet() {
+  var calendarId = '0a437281002a546d7e17233cefa484100bd212d88da1c792e9f162bdf1be23e3@group.calendar.google.com';
+  var sheetId = '15EbnrqcDcvhlKOJ3L0cZxzRLiiZqQp-BrYSdwq1tnZ8';
+  var sheetName = 'CalendarEvents';
+  var ss = SpreadsheetApp.openById(sheetId);
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) sheet = ss.insertSheet(sheetName);
+
+  var header = ['CalendarId', 'EventId', 'StartDatetime', 'EndDatetime', 'Student', 'Teacher', 'Attendance'];
+  sheet.clear();
+  sheet.appendRow(header);
+
+  var now = new Date();
+  var timeMinDate = new Date(2025, 8, 1);
+  var timeMaxDate = new Date(now.getFullYear(), now.getMonth() + 6, now.getDate());
+  var timeMin = timeMinDate.toISOString();
+  var timeMax = timeMaxDate.toISOString();
+  
+  var allEvents = [];
+  var pageToken = null;
+  var args = {
+    timeMin: timeMin,
+    timeMax: timeMax,
+    singleEvents: true,
+    orderBy: 'startTime',
+    maxResults: 2500
+  };
+  do {
+    if (pageToken) args.pageToken = pageToken;
+    var resp = Calendar.Events.list(calendarId, args);
+    if (resp && resp.items && resp.items.length) allEvents = allEvents.concat(resp.items);
+    pageToken = resp && resp.nextPageToken ? resp.nextPageToken : null;
+  } while (pageToken);
+
+  function formatTaipei(dtStr) {
+    if (!dtStr) return '';
+    var dt = new Date(dtStr);
+    // 轉換為台灣時區 (UTC+8)
+    var taipei = new Date(dt.getTime() + 8 * 60 * 60 * 1000);
+    var yyyy = taipei.getUTCFullYear();
+    var mm = ('0' + (taipei.getUTCMonth() + 1)).slice(-2);
+    var dd = ('0' + taipei.getUTCDate()).slice(-2);
+    var hh = ('0' + taipei.getUTCHours()).slice(-2);
+    var min = ('0' + taipei.getUTCMinutes()).slice(-2);
+    var ss = ('0' + taipei.getUTCSeconds()).slice(-2);
+    return yyyy + '-' + mm + '-' + dd + ' ' + hh + ':' + min + ':' + ss;
+  }
+  var rows = allEvents.map(function(ev) {
+    var student = (ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.student) || '';
+    var teacher = (ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.teacher) || '';
+    var attendance = (ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.attendance) || '';
+    var startRaw = ev.start && (ev.start.dateTime || ev.start.date) || '';
+    var endRaw = ev.end && (ev.end.dateTime || ev.end.date) || '';
+    return [
+      calendarId,
+      ev.id || '',
+      formatTaipei(startRaw),
+      formatTaipei(endRaw),
+      student,
+      teacher,
+      attendance
+    ];
+  });
+  if (rows.length) {
+    sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+  }
+}
+
+function syncPurchaseHistoryToReport() {
+	var srcId = '15EbnrqcDcvhlKOJ3L0cZxzRLiiZqQp-BrYSdwq1tnZ8';
+	var srcSs = SpreadsheetApp.openById(srcId);
+	var srcSheet = srcSs.getSheetByName('StockHistory');
+	if (!srcSheet) {
+		throw new Error('找不到來源分頁 StockHistory');
+	}
+
+	// 讀取 Students 對照表
+	var studentsSheet = srcSs.getSheetByName('Students');
+	var idToName = {};
+	if (studentsSheet) {
+		var studentsData = studentsSheet.getDataRange().getValues();
+		for (var i = 1; i < studentsData.length; i++) {
+			var row = studentsData[i];
+			var id = row[0] !== undefined ? String(row[0]) : '';
+			var name = row[1] !== undefined ? String(row[1]) : '';
+			if (id) idToName[id] = name;
+		}
+	}
+
+	// 讀取來源資料（假設有 header）
+	var data = srcSheet.getDataRange().getValues();
+	if (data.length <= 1) {
+		// 沒資料
+		writeToDest([]);
+		return;
+	}
+
+	var header = data[0];
+	var rows = data.slice(1);
+
+	// 找出來源欄位的 index（寬容處理）
+	var idx = {};
+	for (var h = 0; h < header.length; h++) {
+		var key = (header[h] || '').toString().trim();
+		idx[key] = h;
+	}
+
+	// 支援欄位名稱變體
+	function colIndex(names) {
+		for (var i = 0; i < names.length; i++) {
+			if (idx.hasOwnProperty(names[i])) return idx[names[i]];
+		}
+		return -1;
+	}
+
+	var si = colIndex(['Student', 'student', 'StudentId', 'studentId']);
+	var di = colIndex(['Desc', 'desc', 'Description', 'description']);
+	var ai = colIndex(['Amount', 'amount']);
+	var ui = colIndex(['UpdatedAt', 'Updated At', 'updatedAt', 'updated_at']);
+
+	var out = [];
+	for (var r = 0; r < rows.length; r++) {
+		var row = rows[r];
+		var studentId = si >= 0 ? String(row[si]) : '';
+		var desc = di >= 0 ? row[di] : '';
+		var amount = ai >= 0 ? Number(row[ai]) : 0;
+		var updatedAtRaw = ui >= 0 ? row[ui] : '';
+
+		var studentName = idToName[studentId] || studentId || '';
+		var dateStr = '';
+		var dateYYYYMM = '';
+		if (updatedAtRaw) {
+			try {
+				var dt = new Date(updatedAtRaw);
+				if (!isNaN(dt.getTime())) {
+					dateStr = dt.getFullYear() + '-' + ('0' + (dt.getMonth() + 1)).slice(-2) + '-' + ('0' + dt.getDate()).slice(-2);
+					dateYYYYMM = dt.getFullYear() + '/' + ('0' + (dt.getMonth() + 1)).slice(-2);
+				} else {
+					// 如果不是可解析的日期，嘗試只取字串中的日期部分
+					var s = String(updatedAtRaw);
+					var m = s.match(/(\d{4})[-\/]?(\d{2})[-\/]?(\d{2})/);
+					if (m) {
+						dateStr = m[1] + '-' + m[2] + '-' + m[3];
+						dateYYYYMM = m[1] + '/' + m[2];
+					} else {
+						dateStr = s;
+						dateYYYYMM = '';
+					}
+				}
+			} catch (e) {
+				dateStr = String(updatedAtRaw);
+				dateYYYYMM = '';
+			}
+		}
+		var category = (amount > 0) ? '購買' : ('上課' + (dateYYYYMM ? (' ' + dateYYYYMM) : ''));
+		var title = desc;
+		var qty = amount;
+		out.push([studentName, category, title, qty, dateStr]);
+	}
+
+	writeToDest(out);
+}
+
+function writeToDest(rows) {
+    var destId = '1EsDKBw0malhT8o0s_OF28QMnNfScTerF-FK-9W36GOE';
+    var destSs = SpreadsheetApp.openById(destId);
+    var destSheet = destSs.getSheetByName('stock');
+    if (!destSheet) destSheet = destSs.insertSheet('stock');
+    // 清空並寫入 header + rows
+    destSheet.clear();
+	var headerOut = ['學生', 'category', 'title', '數量', '日期', 'InRange'];
+	destSheet.appendRow(headerOut);
+	if (rows && rows.length) {
+		// 寫入資料
+		destSheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+		// 寫入 InRange 公式
+		var inRangeCol = headerOut.length; // F 欄
+		var dateCol = headerOut.indexOf('日期') + 1; // E 欄
+		for (var i = 0; i < rows.length; i++) {
+			var rowIdx = i + 2;
+			// 公式：=AND(E2 >= 'stock-report'!B$1, E2 <= 'stock-report'!D$1)
+			var formula = '=AND(E' + rowIdx + " >= 'stock-report'!B$1, E" + rowIdx + " <= 'stock-report'!D$1)";
+			destSheet.getRange(rowIdx, inRangeCol).setFormula(formula);
+		}
+	}
+}
+
+function syncTeacherAttendanceToReport() {
+  var srcId = '15EbnrqcDcvhlKOJ3L0cZxzRLiiZqQp-BrYSdwq1tnZ8';
+  var srcSs = SpreadsheetApp.openById(srcId);
+  var eventsSheet = srcSs.getSheetByName('CalendarEvents');
+  var teachersSheet = srcSs.getSheetByName('Teachers');
+  if (!eventsSheet || !teachersSheet) throw new Error('來源分頁不存在');
+
+  // 取得 Teacher ID->Name 對照表
+  var teacherMap = {};
+  var tData = teachersSheet.getDataRange().getValues();
+  for (var i = 1; i < tData.length; i++) {
+    var row = tData[i];
+    var id = row[0] !== undefined ? String(row[0]) : '';
+    var name = row[1] !== undefined ? String(row[1]) : '';
+    if (id) teacherMap[id] = name;
+  }
+
+  // 取得 CalendarEvents 資料
+  var data = eventsSheet.getDataRange().getValues();
+  if (data.length <= 1) return;
+  var header = data[0];
+  var rows = data.slice(1);
+  var idx = {};
+  for (var h = 0; h < header.length; h++) idx[header[h]] = h;
+  var ti = idx['Teacher'] || idx['teacher'];
+  var ai = idx['Attendance'] || idx['attendance'];
+  var si = idx['StartDatetime'] || idx['startDatetime'] || idx['startdatetime'];
+  var ei = idx['EndDatetime'] || idx['endDatetime'] || idx['enddatetime'];
+
+  // 過濾出席資料，並依老師+日期分組，只合併重疊或連續時段
+  var groupMap = {};
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    if (!row[ai] || String(row[ai]).trim() !== '出席') continue;
+    var teacherId = row[ti] ? String(row[ti]) : '';
+    var teacherName = teacherMap[teacherId] || teacherId;
+    var startStr = row[si] ? String(row[si]) : '';
+    var endStr = row[ei] ? String(row[ei]) : '';
+    if (!teacherName || !startStr || !endStr) continue;
+    
+    // 取日期（yyyy-MM-dd）
+    var dateKey = '';
+    try {
+      var dt = new Date(startStr);
+      if (!isNaN(dt.getTime())) {
+        dateKey = dt.getFullYear() + '-' + ('0' + (dt.getMonth() + 1)).slice(-2) + '-' + ('0' + dt.getDate()).slice(-2);
+      } else {
+        dateKey = startStr.substr(0, 10);
+      }
+    } catch (e) {
+      dateKey = startStr.substr(0, 10);
+    }
+    
+    var baseKey = teacherName + '|' + dateKey;
+    var merged = false;
+    
+    // 檢查是否可與現有時段合併
+    for (var existingKey in groupMap) {
+      if (!existingKey.startsWith(baseKey + '|')) continue;
+      var existing = groupMap[existingKey];
+      
+      // 檢查時段是否重疊或連續
+      if (isOverlapOrContinuous(startStr, endStr, existing.start, existing.end)) {
+        // 合併時段：取最早開始、最晚結束
+        if (compareTime(startStr, existing.start) < 0) existing.start = startStr;
+        if (compareTime(endStr, existing.end) > 0) existing.end = endStr;
+        merged = true;
+        break;
+      }
+    }
+    
+    // 若無法合併，新增時段
+    if (!merged) {
+      var counter = 1;
+      var newKey = baseKey + '|' + counter;
+      while (groupMap[newKey]) {
+        counter++;
+        newKey = baseKey + '|' + counter;
+      }
+      groupMap[newKey] = { teacher: teacherName, date: dateKey, start: startStr, end: endStr };
+    }
+  }
+  
+  // 檢查兩個時段是否重疊或連續
+  function isOverlapOrContinuous(start1, end1, start2, end2) {
+    var s1 = new Date(start1);
+    var e1 = new Date(end1);
+    var s2 = new Date(start2);
+    var e2 = new Date(end2);
+    
+    if (isNaN(s1.getTime()) || isNaN(e1.getTime()) || isNaN(s2.getTime()) || isNaN(e2.getTime())) {
+      return false;
+    }
+    
+    // 重疊：start1 < end2 && start2 < end1
+    // 連續：end1 == start2 || end2 == start1
+    return (s1 < e2 && s2 < e1) || (e1.getTime() === s2.getTime()) || (e2.getTime() === s1.getTime());
+  }
+
+  // 整理輸出
+  var out = [];
+  for (var k in groupMap) {
+    var g = groupMap[k];
+    var hour = calcHour(g.start, g.end);
+    var startFmt = formatDateTimeStr(g.start);
+    var endFmt = formatDateTimeStr(g.end);
+    // 強制轉為字串避免 Date 物件被自動格式化
+    out.push([String(g.teacher), String(startFmt), String(endFmt), String(hour)]);
+  }
+
+  // 時間格式 yyyy/MM/dd HH:mm (減少15小時修正時區)
+  function formatDateTimeStr(dtVal) {
+    var dt = null;
+    
+    // 若是 Date 物件
+    if (Object.prototype.toString.call(dtVal) === '[object Date]' && !isNaN(dtVal.getTime())) {
+      dt = new Date(dtVal.getTime() - 15 * 60 * 60 * 1000); // 減少15小時
+    }
+    // 若是字串，先解析再減少15小時
+    else if (typeof dtVal === 'string') {
+      var tempDt = new Date(dtVal);
+      if (!isNaN(tempDt.getTime())) {
+        dt = new Date(tempDt.getTime() - 15 * 60 * 60 * 1000);
+      }
+    }
+    // Google Sheets 內部日期數字
+    else if (typeof dtVal === 'number') {
+      var tempDt = new Date(Math.round((dtVal - 25569) * 86400 * 1000));
+      if (!isNaN(tempDt.getTime())) {
+        dt = new Date(tempDt.getTime() - 15 * 60 * 60 * 1000);
+      }
+    }
+    
+    if (dt && !isNaN(dt.getTime())) {
+      var yyyy = dt.getFullYear();
+      var mm = ('0' + (dt.getMonth() + 1)).slice(-2);
+      var dd = ('0' + dt.getDate()).slice(-2);
+      var hh = ('0' + dt.getHours()).slice(-2);
+      var min = ('0' + dt.getMinutes()).slice(-2);
+      return yyyy + '/' + mm + '/' + dd + ' ' + hh + ':' + min;
+    }
+    
+    return String(dtVal);
+  }
+
+  // 寫入目標 teacher 分頁
+  var destId = '1EsDKBw0malhT8o0s_OF28QMnNfScTerF-FK-9W36GOE';
+  var destSs = SpreadsheetApp.openById(destId);
+  var destSheet = destSs.getSheetByName('teacher');
+  if (!destSheet) destSheet = destSs.insertSheet('teacher');
+  destSheet.clear();
+  destSheet.appendRow(['老師', '開始時間', '結束時間', '時數']);
+  if (out.length) destSheet.getRange(2, 1, out.length, out[0].length).setValues(out);
+}
+
+function compareTime(a, b) {
+    var ta = new Date(a);
+    var tb = new Date(b);
+    if (isNaN(ta.getTime()) || isNaN(tb.getTime())) return String(a).localeCompare(String(b));
+    return ta - tb;
+}
+
+function calcHour(start, end) {
+    var t1 = new Date(start);
+    var t2 = new Date(end);
+    if (isNaN(t1.getTime()) || isNaN(t2.getTime())) return '';
+    var diff = (t2 - t1) / (1000 * 60 * 60);
+    return Math.round(diff * 10) / 10;
+}
+
+function aggregateStockHistory() {
+  var srcId = '15EbnrqcDcvhlKOJ3L0cZxzRLiiZqQp-BrYSdwq1tnZ8';
+  var srcSs = SpreadsheetApp.openById(srcId);
+  
+  // 取得來源分頁
+  var studentPurchasesSheet = srcSs.getSheetByName('StudentPurchases');
+  var calendarEventsSheet = srcSs.getSheetByName('CalendarEvents');
+  var stockHistorySheet = srcSs.getSheetByName('StockHistory');
+  
+  if (!studentPurchasesSheet || !calendarEventsSheet) {
+    throw new Error('來源分頁不存在');
+  }
+  
+  // 如果 StockHistory 分頁不存在，建立它
+  if (!stockHistorySheet) {
+    stockHistorySheet = srcSs.insertSheet('StockHistory');
+    // 設定標題列
+    stockHistorySheet.appendRow(['ID', 'Student', 'Desc', 'Amount', 'CreatedUser', 'UpdatedUser', 'CreatedAt', 'UpdatedAt']);
+  } else {
+    // 清除現有資料（保留標題列）
+    if (stockHistorySheet.getLastRow() > 1) {
+      stockHistorySheet.getRange(2, 1, stockHistorySheet.getLastRow() - 1, stockHistorySheet.getLastColumn()).clear();
+    }
+  }
+  
+  var currentTime = new Date();
+  var aggregatedData = [];
+  
+  // 處理 StudentPurchases 資料
+  var purchasesData = studentPurchasesSheet.getDataRange().getValues();
+  if (purchasesData.length > 1) {
+    var purchasesHeader = purchasesData[0];
+    var purchasesRows = purchasesData.slice(1);
+    
+    // 找出欄位索引
+    var purchasesIdx = {};
+    for (var h = 0; h < purchasesHeader.length; h++) {
+      purchasesIdx[purchasesHeader[h]] = h;
+    }
+    
+    var idIdx = purchasesIdx['ID'] !== undefined ? purchasesIdx['ID'] : purchasesIdx['id'];
+    var studentIdx = purchasesIdx['Student'] !== undefined ? purchasesIdx['Student'] : purchasesIdx['student'];
+    var descIdx = purchasesIdx['Desc'] !== undefined ? purchasesIdx['Desc'] : purchasesIdx['desc'];
+    var purchasedQtyIdx = purchasesIdx['PurchasedQty'] !== undefined ? purchasesIdx['PurchasedQty'] : purchasesIdx['purchasedQty'];
+    
+    for (var i = 0; i < purchasesRows.length; i++) {
+      var row = purchasesRows[i];
+      if (row[idIdx] !== undefined && row[idIdx] !== '') {
+        aggregatedData.push([
+          row[idIdx],                    // ID
+          row[studentIdx] || '',         // Student
+          row[descIdx] || '',            // Desc
+          row[purchasedQtyIdx] || 0,     // Amount (PurchasedQty)
+          'aggregateStockHistory',       // CreatedUser
+          'aggregateStockHistory',       // UpdatedUser
+          currentTime,                   // CreatedAt
+          currentTime                    // UpdatedAt
+        ]);
+      }
+    }
+  }
+  
+  // 處理 CalendarEvents 資料
+  var eventsData = calendarEventsSheet.getDataRange().getValues();
+  if (eventsData.length > 1) {
+    var eventsHeader = eventsData[0];
+    var eventsRows = eventsData.slice(1);
+    
+    // 找出欄位索引
+    var eventsIdx = {};
+    for (var h = 0; h < eventsHeader.length; h++) {
+      eventsIdx[eventsHeader[h]] = h;
+    }
+    
+    var eventIdIdx = eventsIdx['EventId'] !== undefined ? eventsIdx['EventId'] : eventsIdx['eventId'];
+    var studentIdx = eventsIdx['Student'] !== undefined ? eventsIdx['Student'] : eventsIdx['student'];
+    var attendanceIdx = eventsIdx['Attendance'] !== undefined ? eventsIdx['Attendance'] : eventsIdx['attendance'];
+    var startDatetimeIdx = eventsIdx['StartDatetime'] !== undefined ? eventsIdx['StartDatetime'] : eventsIdx['startDatetime'];
+    
+    for (var i = 0; i < eventsRows.length; i++) {
+      var row = eventsRows[i];
+      // 只處理出席的資料
+      if (row[attendanceIdx] && String(row[attendanceIdx]).trim() === '出席' && row[eventIdIdx] !== undefined && row[eventIdIdx] !== '') {
+        // 格式化日期為 yyyyMMdd
+        var desc = '';
+        if (row[startDatetimeIdx]) {
+          try {
+            var startDate = new Date(row[startDatetimeIdx]);
+            if (!isNaN(startDate.getTime())) {
+              var yyyy = startDate.getFullYear();
+              var mm = ('0' + (startDate.getMonth() + 1)).slice(-2);
+              var dd = ('0' + startDate.getDate()).slice(-2);
+              desc = yyyy + mm + dd;
+            } else {
+              desc = String(row[startDatetimeIdx]).substr(0, 8).replace(/[^0-9]/g, '');
+            }
+          } catch (e) {
+            desc = String(row[startDatetimeIdx]).substr(0, 8).replace(/[^0-9]/g, '');
+          }
+        }
+        
+        aggregatedData.push([
+          row[eventIdIdx],               // ID (EventId)
+          row[studentIdx] || '',         // Student
+          desc,                          // Desc (yyyyMMdd format)
+          -1,                            // Amount (-1)
+          'aggregateStockHistory',       // CreatedUser
+          'aggregateStockHistory',       // UpdatedUser
+          currentTime,                   // CreatedAt
+          currentTime                    // UpdatedAt
+        ]);
+      }
+    }
+  }
+  
+  // 寫入 StockHistory
+  if (aggregatedData.length > 0) {
+    stockHistorySheet.getRange(2, 1, aggregatedData.length, 8).setValues(aggregatedData);
+  }
+  
+  Logger.log('已處理 ' + aggregatedData.length + ' 筆資料到 StockHistory');
+  return '成功處理 ' + aggregatedData.length + ' 筆資料';
+}
