@@ -94,6 +94,8 @@ function fetchSheetOptions(sheetId, range, includeThirdColumn) {
           option.name = row[0] + '.' + row[1] + '(' + (new Date().getFullYear() - 1903 - (new Date().getMonth() > 8 ? 1 : 0) - row[2]) + ')';
         } else if (includeThirdColumn) {
           option.name = row[0] + '.' + row[1];
+        } else {
+          option.name = row[0] + '.' + row[1];
         }
         arr.push(option);
       }
