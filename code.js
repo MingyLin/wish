@@ -42,13 +42,11 @@ function onEventOpen(e) {
   var subjectFutureBtn = createUpdateButton('subject', 'future', calendarId, eventId, '更新這項活動和後續活動');
   var subjectBatchBtn = createUpdateButton('subject', 'batch', calendarId, eventId, '更新所有活動');
   var infoWidget = CardService.newKeyValue().setTopLabel('目前標題').setContent(event.summary);
-  var creatorWidget = CardService.newKeyValue().setTopLabel('建立者').setContent(event.creator.email);
-  var updatedWidget = CardService.newKeyValue().setTopLabel('異動時間').setContent(event.updated);
+  var updatedWidget = CardService.newKeyValue().setTopLabel('更新時間').setContent(event.updated);
   var card = CardService.newCardBuilder()
     .setHeader(CardService.newCardHeader().setTitle('點名工具'))
     .addSection(CardService.newCardSection()
       .addWidget(infoWidget)
-      .addWidget(creatorWidget)
       .addWidget(updatedWidget)
       .addWidget(studentDropdown)
       .addWidget(studentBatchBtn)
@@ -250,108 +248,129 @@ function saveField(e) {
       resource.extendedProperties.private.subject = subjectId;
       resource.summary = currentStudentName + '-' + subjectName + '(' + currentTeacherName + ')';
     }
+    var patchedAny = false;
+
     if ((field === 'teacher' || field === 'student' || field === 'subject') && updateType === 'single') {
-      Calendar.Events.patch(resource, calendarId, eventId);
-      syncEventToSheet();
+      // If nothing changed, skip patch to save API calls
+      var origStudent = currentStudentId || '';
+      var origTeacher = currentTeacherId || '';
+      var origSubject = currentSubject || '';
+      var needPatch = false;
+      if (field === 'student' && studentId !== origStudent) needPatch = true;
+      if (field === 'teacher' && teacherId !== origTeacher) needPatch = true;
+      if (field === 'subject' && subjectId !== origSubject) needPatch = true;
+      if (needPatch) {
+        Calendar.Events.patch(resource, calendarId, eventId);
+        patchedAny = true;
+      }
     } else if (updateType === 'future') {
       var masterId = event && event.recurringEventId ? event.recurringEventId : null;
       if (masterId) {
         try {
-          var resourceRecurring = {
-            summary: currentStudentName + '-' + currentSubject + '(' + currentTeacherName + ')',
-            extendedProperties: { private: { student: currentStudentId, teacher: currentTeacherId, subject: currentSubject } },
-            colorId: '1'
-          };
-          
-          if (field === 'student') {
-            resourceRecurring.summary = studentName + '-' + currentSubject + '(' + currentTeacherName + ')';
-            resourceRecurring.extendedProperties.private.student = studentId;
-          } else if (field === 'teacher') {
-            resourceRecurring.summary = currentStudentName + '-' + currentSubject + '(' + teacherName + ')';
-            resourceRecurring.extendedProperties.private.teacher = teacherId;
-          } else if (field === 'subject') {
-            resourceRecurring.summary = currentStudentName + '-' + subjectName + '(' + currentTeacherName + ')';
-            resourceRecurring.extendedProperties.private.subject = subjectId;
-          }
           var instancesResp = Calendar.Events.instances(calendarId, masterId, { maxResults: 2500 });
           if (instancesResp && instancesResp.items && instancesResp.items.length) {
+            var items = instancesResp.items;
+            // find index of current event to start from there
+            var startIndex = 0;
+            for (var idx = 0; idx < items.length; idx++) {
+              if (items[idx].id === eventId) { startIndex = idx; break; }
+            }
             var eventsToWrite = [];
-            var currentInst = null;
-            for (var i = 0; i < instancesResp.items.length; i++) {
-              var inst = instancesResp.items[i];
-              if (inst.id === eventId) {
-                currentInst = inst;
-                break;
-              }
-            }
-            var currentStart = currentInst && (currentInst.start && (currentInst.start.dateTime || currentInst.start.date));
-            for (var i = 0; i < instancesResp.items.length; i++) {
-              var inst = instancesResp.items[i];
-              var instStart = inst.start && (inst.start.dateTime || inst.start.date);
-              if (currentStart && instStart >= currentStart) {
-                try {
-                  Calendar.Events.patch(resourceRecurring, calendarId, inst.id);
-                  var attendanceInst = (inst.extendedProperties && inst.extendedProperties.private && inst.extendedProperties.private.attendance) || '未點名';
-                  var finalStudentId = field === 'student' ? studentId : currentStudentId;
-                  var finalTeacherId = field === 'teacher' ? teacherId : currentTeacherId;
-                  var finalSubject = field === 'subject' ? subjectId : currentSubject;
-                  eventsToWrite.push({ calendarId: calendarId, eventId: inst.id, startDatetime: instStart, endDatetime: inst.end && (inst.end.dateTime || inst.end.date), student: finalStudentId, teacher: finalTeacherId, subject: finalSubject, attendance: attendanceInst });
-                } catch (errInst) {
-                  Logger.log('Failed to patch instance %s: %s', inst.id, errInst.message);
+            for (var ii = startIndex; ii < items.length; ii++) {
+              var inst = items[ii];
+              try {
+                // compute existing values
+                var existingStudent = (inst.extendedProperties && inst.extendedProperties.private && inst.extendedProperties.private.student) || '';
+                var existingTeacher = (inst.extendedProperties && inst.extendedProperties.private && inst.extendedProperties.private.teacher) || '';
+                var existingSubject = (inst.extendedProperties && inst.extendedProperties.private && inst.extendedProperties.private.subject) || '';
+
+                var finalStudentId = field === 'student' ? studentId : currentStudentId;
+                var finalTeacherId = field === 'teacher' ? teacherId : currentTeacherId;
+                var finalSubject = field === 'subject' ? subjectId : currentSubject;
+
+                // skip if values already match (no-op)
+                if (existingStudent === finalStudentId && existingTeacher === finalTeacherId && existingSubject === finalSubject) {
+                  continue;
                 }
+
+                // compute display names for summary
+                var finalStudentName = '';
+                var finalTeacherName = '';
+                // find student name in studentOptions
+                for (var si = 0; si < studentOptions.length; si++) {
+                  if (String(studentOptions[si].id) === String(finalStudentId)) { finalStudentName = studentOptions[si].name; break; }
+                }
+                // find teacher name in teacherOptions
+                for (var ti = 0; ti < teacherOptions.length; ti++) {
+                  if (String(teacherOptions[ti].id) === String(finalTeacherId)) { finalTeacherName = teacherOptions[ti].name; break; }
+                }
+                // fallback to current names if not found
+                if (!finalStudentName) finalStudentName = currentStudentName || finalStudentId || '';
+                if (!finalTeacherName) finalTeacherName = currentTeacherName || finalTeacherId || '';
+                var resSummary = finalStudentName + '-' + (finalSubject || '') + '(' + finalTeacherName + ')';
+                var resourceForInst = { summary: resSummary, extendedProperties: { private: { student: finalStudentId, teacher: finalTeacherId, subject: finalSubject } }, colorId: '1' };
+                // patch and remember to sync later
+                Calendar.Events.patch(resourceForInst, calendarId, inst.id);
+                patchedAny = true;
+
+                var attendanceInst = (inst.extendedProperties && inst.extendedProperties.private && inst.extendedProperties.private.attendance) || '未點名';
+                eventsToWrite.push({ calendarId: calendarId, eventId: inst.id, startDatetime: inst.start && (inst.start.dateTime || inst.start.date), endDatetime: inst.end && (inst.end.dateTime || inst.end.date), student: finalStudentId, teacher: finalTeacherId, subject: finalSubject, attendance: attendanceInst });
+              } catch (errInst) {
+                Logger.log('Failed to patch instance %s: %s', inst.id, errInst.message);
               }
             }
-            if (eventsToWrite.length) {
-              try { syncEventToSheet(); } catch (errBulk) { Logger.log('Bulk sync to sheet failed: %s', errBulk.message); }
-            }
+            // we'll sync once below if patchedAny
           }
         } catch (err2) {
           Logger.log('Error updating future instances: %s', err2.message);
         }
       } else {
         Calendar.Events.patch(resource, calendarId, eventId);
-        syncEventToSheet();
+        patchedAny = true;
       }
     } else {
       var masterId = event && event.recurringEventId ? event.recurringEventId : null;
       if (masterId) {
         try {
-          var resourceRecurring = {
-            summary: currentStudentName + '-' + currentSubject + '-(' + currentTeacherName + ')',
-            extendedProperties: { private: { student: currentStudentId, teacher: currentTeacherId, subject: currentSubject } },
-            colorId: '1'
-          };
-          
-          if (field === 'student') {
-            resourceRecurring.summary = studentName + '-' + currentSubject + '(' + currentTeacherName + ')';
-            resourceRecurring.extendedProperties.private.student = studentId;
-          } else if (field === 'teacher') {
-            resourceRecurring.summary = currentStudentName + '-' + currentSubject + '(' + teacherName + ')';
-            resourceRecurring.extendedProperties.private.teacher = teacherId;
-          } else if (field === 'subject') {
-            resourceRecurring.summary = currentStudentName + '-' + subjectName + '(' + currentTeacherName + ')';
-            resourceRecurring.extendedProperties.private.subject = subjectId;
-          }
-          
-          try { Calendar.Events.patch(resourceRecurring, calendarId, masterId); } catch (errMaster) {}
           var instancesResp = Calendar.Events.instances(calendarId, masterId, { maxResults: 2500 });
           if (instancesResp && instancesResp.items && instancesResp.items.length) {
+            var items = instancesResp.items;
             var eventsToWrite = [];
-            for (var i = 0; i < instancesResp.items.length; i++) {
-              var inst = instancesResp.items[i];
+            for (var jj = 0; jj < items.length; jj++) {
+              var inst = items[jj];
               try {
-                Calendar.Events.patch(resourceRecurring, calendarId, inst.id);
-                var attendanceInst = (inst.extendedProperties && inst.extendedProperties.private && inst.extendedProperties.private.attendance) || '未點名';
+                var existingStudent = (inst.extendedProperties && inst.extendedProperties.private && inst.extendedProperties.private.student) || '';
+                var existingTeacher = (inst.extendedProperties && inst.extendedProperties.private && inst.extendedProperties.private.teacher) || '';
+                var existingSubject = (inst.extendedProperties && inst.extendedProperties.private && inst.extendedProperties.private.subject) || '';
+
                 var finalStudentId = field === 'student' ? studentId : currentStudentId;
                 var finalTeacherId = field === 'teacher' ? teacherId : currentTeacherId;
                 var finalSubject = field === 'subject' ? subjectId : currentSubject;
+
+                if (existingStudent === finalStudentId && existingTeacher === finalTeacherId && existingSubject === finalSubject) {
+                  continue;
+                }
+
+                // compute display names for summary
+                var finalStudentName = '';
+                var finalTeacherName = '';
+                for (var si2 = 0; si2 < studentOptions.length; si2++) {
+                  if (String(studentOptions[si2].id) === String(finalStudentId)) { finalStudentName = studentOptions[si2].name; break; }
+                }
+                for (var ti2 = 0; ti2 < teacherOptions.length; ti2++) {
+                  if (String(teacherOptions[ti2].id) === String(finalTeacherId)) { finalTeacherName = teacherOptions[ti2].name; break; }
+                }
+                if (!finalStudentName) finalStudentName = currentStudentName || finalStudentId || '';
+                if (!finalTeacherName) finalTeacherName = currentTeacherName || finalTeacherId || '';
+                var resSummary2 = finalStudentName + '-' + (finalSubject || '') + '(' + finalTeacherName + ')';
+                var resourceForInst = { summary: resSummary2, extendedProperties: { private: { student: finalStudentId, teacher: finalTeacherId, subject: finalSubject } }, colorId: '1' };
+                Calendar.Events.patch(resourceForInst, calendarId, inst.id);
+                patchedAny = true;
+                var attendanceInst = (inst.extendedProperties && inst.extendedProperties.private && inst.extendedProperties.private.attendance) || '未點名';
                 eventsToWrite.push({ calendarId: calendarId, eventId: inst.id, startDatetime: inst.start && (inst.start.dateTime || inst.start.date), endDatetime: inst.end && (inst.end.dateTime || inst.end.date), student: finalStudentId, teacher: finalTeacherId, subject: finalSubject, attendance: attendanceInst });
               } catch (errInst) {
                 Logger.log('Failed to patch instance %s: %s', inst.id, errInst.message);
               }
-            }
-            if (eventsToWrite.length) {
-              try { syncEventToSheet(); } catch (errBulk) { Logger.log('Bulk sync to sheet failed: %s', errBulk.message); }
             }
           }
         } catch (err2) {
@@ -359,10 +378,18 @@ function saveField(e) {
         }
       } else {
         Calendar.Events.patch(resource, calendarId, eventId);
-        syncEventToSheet();
+        patchedAny = true;
       }
     }
-    return CardService.newActionResponseBuilder().setNavigation(CardService.newNavigation().pushCard(createInfoCard('已儲存欄位。'))).build();
+    // Sync once if we patched any events
+    try {
+      if (patchedAny) {
+        try { syncEventToSheet(); } catch (errSync) { Logger.log('Bulk sync to sheet failed: %s', errSync.message); }
+      }
+      return CardService.newActionResponseBuilder().setNavigation(CardService.newNavigation().pushCard(createInfoCard('已儲存欄位。'))).build();
+    } catch (err) {
+      return CardService.newActionResponseBuilder().setNavigation(CardService.newNavigation().pushCard(createInfoCard('儲存失敗：' + err.message))).build();
+    }
   } catch (err) {
     return CardService.newActionResponseBuilder().setNavigation(CardService.newNavigation().pushCard(createInfoCard('儲存失敗：' + err.message))).build();
   }
