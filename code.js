@@ -75,34 +75,75 @@ function createInfoCard(message) {
 }
 
 function fetchSheetOptions(sheetId, range, includeThirdColumn) {
-  var url = 'https://sheets.googleapis.com/v4/spreadsheets/' + sheetId + '/values/' + encodeURIComponent(range);
-  var params = {
-    method: 'get',
-    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
-    muteHttpExceptions: true
-  };
-  var response = UrlFetchApp.fetch(url, params);
-  var result = JSON.parse(response.getContentText());
-  var arr = [];
-  if (result.values && result.values.length > 1) {
-    for (var i = 1; i < result.values.length; i++) {
-      var row = result.values[i];
+  // Faster implementation: use SpreadsheetApp to read ranges and CacheService to cache results.
+  try {
+    var cache = CacheService.getScriptCache();
+    var cacheKey = 'fetchSheetOptions|' + sheetId + '|' + range + '|' + (includeThirdColumn ? '1' : '0');
+    try {
+      var cached = cache.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    } catch (e) { /* ignore cache errors */ }
+
+    // Parse sheet name and A1 range (e.g. 'Students!A:C')
+    var sheetName = null;
+    var rangePart = range;
+    if (range.indexOf('!') !== -1) {
+      var parts = range.split('!');
+      sheetName = parts[0];
+      rangePart = parts.slice(1).join('!');
+    }
+
+    var ss = SpreadsheetApp.openById(sheetId);
+    var sheet = sheetName ? ss.getSheetByName(sheetName) : ss.getSheets()[0];
+    if (!sheet) return [{ id: '', name: '選項讀取失敗' }];
+
+    // Determine start column and number of columns from rangePart (supports forms like 'A:C' or 'A:B')
+    function colLetterToIndex(letter) {
+      var s = letter.toUpperCase();
+      var col = 0;
+      for (var i = 0; i < s.length; i++) {
+        col = col * 26 + (s.charCodeAt(i) - 64);
+      }
+      return col;
+    }
+
+    var rpParts = rangePart.split(':');
+    var startLetters = (rpParts[0].match(/[A-Za-z]+/) || [])[0] || 'A';
+    var endLetters = (rpParts.length > 1 && (rpParts[1].match(/[A-Za-z]+/) || [])[0]) || startLetters;
+    var startCol = colLetterToIndex(startLetters);
+    var endCol = colLetterToIndex(endLetters);
+    var numCols = Math.max(1, endCol - startCol + 1);
+
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return [{ id: '', name: '選項讀取失敗' }];
+
+    var values = sheet.getRange(1, startCol, lastRow, numCols).getValues();
+    var arr = [];
+    for (var i = 1; i < values.length; i++) {
+      var row = values[i];
       if (row[0] && row[1]) {
-        var option = { id: row[0], name: row[1] };
+        var option = { id: String(row[0]), name: String(row[1]) };
         if (includeThirdColumn && row[2]) {
           option.entranceYear = row[2];
-          option.name = row[0] + '.' + row[1] + '(' + (new Date().getFullYear() - 1903 - (new Date().getMonth() > 8 ? 1 : 0) - row[2]) + ')';
-        } else if (includeThirdColumn) {
-          option.name = row[0] + '.' + row[1];
+          var y = Number(row[2]);
+          if (!isNaN(y)) {
+            option.name = option.id + '.' + option.name + '(' + (new Date().getFullYear() - 1903 - (new Date().getMonth() > 8 ? 1 : 0) - y) + ')';
+          } else {
+            option.name = option.id + '.' + option.name;
+          }
         } else {
-          option.name = row[0] + '.' + row[1];
+          option.name = option.id + '.' + option.name;
         }
         arr.push(option);
       }
     }
-    return arr;
+
+    try { cache.put(cacheKey, JSON.stringify(arr), 300); } catch (e) { /* ignore cache set errors */ }
+    if (arr.length) return arr;
+    return [{ id: '', name: '選項讀取失敗' }];
+  } catch (err) {
+    return [{ id: '', name: '選項讀取失敗' }];
   }
-  return [{ id: '', name: '選項讀取失敗' }];
 }
 
 function createDropdown(fieldName, title, options, selected, maxSelect) {
