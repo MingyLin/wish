@@ -399,7 +399,19 @@ function saveAttendanceField(e) {
   var eventId = params.eventId;
   var form = e && e.formInput ? e.formInput : {};
   var attendance = form.attendance || '未點名';
-  var colorId = '8';
+  var colorId = '1';
+  // 0 日曆顏色
+  // 1 薰衣草色
+  // 2 鼠尾草綠
+  // 3 葡萄紫
+  // 4 紅鶴色
+  // 5 香蕉黃
+  // 6 橙橘色
+  // 7 孔雀藍
+  // 8 石墨黑
+  // 9 藍莓色
+  // 10 羅勒綠
+  // 11 番茄紅
   if (attendance === '出席') colorId = '10';
   else if (attendance === '請假') colorId = '5';
   else if (attendance === '缺席') colorId = '11';
