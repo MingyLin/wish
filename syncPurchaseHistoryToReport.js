@@ -48,7 +48,7 @@ function syncPurchaseHistoryToReport() {
 	var si = colIndex(['Student', 'student', 'StudentId', 'studentId']);
 	var di = colIndex(['Desc', 'desc', 'Description', 'description']);
 	var ai = colIndex(['Amount', 'amount']);
-	var ui = colIndex(['UpdatedAt', 'Updated At', 'updatedAt', 'updated_at']);
+	var ui = colIndex(['StockChangedAt']);
 
 	var out = [];
 	for (var r = 0; r < rows.length; r++) {
@@ -100,7 +100,7 @@ function writeToDest(rows) {
     if (!destSheet) destSheet = destSs.insertSheet('stock');
     // 清空並寫入 header + rows
     destSheet.clear();
-	var headerOut = ['學生', 'category', 'title', '數量', '日期', 'InRange'];
+	var headerOut = ['學生', '分類', '項目', '數量', '日期', 'InRange'];
 	destSheet.appendRow(headerOut);
 	if (rows && rows.length) {
 		// 寫入資料
