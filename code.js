@@ -272,7 +272,8 @@ function saveField(e) {
       var masterId = event && event.recurringEventId ? event.recurringEventId : null;
       if (masterId) {
         try {
-          var instancesResp = Calendar.Events.instances(calendarId, masterId, { maxResults: 2500 });
+          var timeMax = now.setMonth(now.getMonth() + 6);          
+          var instancesResp = Calendar.Events.instances(calendarId, masterId, { timeMax: timeMax.toISOString(), maxResults: 2500 });
           if (instancesResp && instancesResp.items && instancesResp.items.length) {
             var items = instancesResp.items;
             // find index of current event to start from there
@@ -334,7 +335,14 @@ function saveField(e) {
       var masterId = event && event.recurringEventId ? event.recurringEventId : null;
       if (masterId) {
         try {
-          var instancesResp = Calendar.Events.instances(calendarId, masterId, { maxResults: 2500 });
+          // limit instances to a 6-month window to avoid fetching huge series
+          var eventStartRaw = event.start && (event.start.dateTime || event.start.date) || null;
+          var now = new Date();
+          var startDateObj = eventStartRaw ? new Date(eventStartRaw) : now;
+          var timeMin = startDateObj > now ? startDateObj : now;
+          var timeMax = new Date(timeMin);
+          timeMax.setMonth(timeMax.getMonth() + 6);
+          var instancesResp = Calendar.Events.instances(calendarId, masterId, { timeMin: timeMin.toISOString(), timeMax: timeMax.toISOString(), maxResults: 2500 });
           if (instancesResp && instancesResp.items && instancesResp.items.length) {
             var items = instancesResp.items;
             var eventsToWrite = [];
