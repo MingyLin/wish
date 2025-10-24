@@ -15,7 +15,7 @@ function aggregateStockHistory() {
   if (!stockHistorySheet) {
     stockHistorySheet = srcSs.insertSheet('StockHistory');
     // 設定標題列
-    stockHistorySheet.appendRow(['ID', 'Student', 'Desc', 'Amount', 'CreatedUser', 'UpdatedUser', 'CreatedAt', 'UpdatedAt']);
+    stockHistorySheet.appendRow(['ID', 'Student', 'Desc', 'Amount', 'StockChangedAt', 'CreatedUser', 'UpdatedUser', 'CreatedAt', 'UpdatedAt']);
   } else {
     // 清除現有資料（保留標題列）
     if (stockHistorySheet.getLastRow() > 1) {
@@ -42,7 +42,8 @@ function aggregateStockHistory() {
     var studentIdx = purchasesIdx['Student'] !== undefined ? purchasesIdx['Student'] : purchasesIdx['student'];
     var descIdx = purchasesIdx['Desc'] !== undefined ? purchasesIdx['Desc'] : purchasesIdx['desc'];
     var purchasedQtyIdx = purchasesIdx['PurchasedQty'] !== undefined ? purchasesIdx['PurchasedQty'] : purchasesIdx['purchasedQty'];
-    
+    var createdAtIdx = purchasesIdx['CreatedAt'] !== undefined ? purchasesIdx['CreatedAt'] : purchasesIdx['createdAt'];
+
     for (var i = 0; i < purchasesRows.length; i++) {
       var row = purchasesRows[i];
       if (row[idIdx] !== undefined && row[idIdx] !== '') {
@@ -51,6 +52,7 @@ function aggregateStockHistory() {
           row[studentIdx] || '',         // Student
           row[descIdx] || '',            // Desc
           row[purchasedQtyIdx] || 0,     // Amount (PurchasedQty)
+          row[createdAtIdx] || currentTime, // StockChangedAt
           'aggregateStockHistory',       // CreatedUser
           'aggregateStockHistory',       // UpdatedUser
           currentTime,                   // CreatedAt
@@ -90,12 +92,12 @@ function aggregateStockHistory() {
               var yyyy = startDate.getFullYear();
               var mm = ('0' + (startDate.getMonth() + 1)).slice(-2);
               var dd = ('0' + startDate.getDate()).slice(-2);
-              desc = yyyy + mm + dd;
+              desc = yyyy + mm + dd + ' ' + row[attendanceIdx];
             } else {
-              desc = String(row[startDatetimeIdx]).substr(0, 8).replace(/[^0-9]/g, '');
+              desc = String(row[startDatetimeIdx]+row[attendanceIdx]+ ' ').substr(0, 8).replace(/[^0-9]/g, '');
             }
           } catch (e) {
-            desc = String(row[startDatetimeIdx]).substr(0, 8).replace(/[^0-9]/g, '');
+            desc = String(row[startDatetimeIdx]+row[attendanceIdx]+ ' ').substr(0, 8).replace(/[^0-9]/g, '');
           }
         }
         
@@ -104,6 +106,7 @@ function aggregateStockHistory() {
           row[studentIdx] || '',         // Student
           desc,                          // Desc (yyyyMMdd format)
           -1,                            // Amount (-1)
+          row[startDatetimeIdx],                          // StockChangedAt
           'aggregateStockHistory',       // CreatedUser
           'aggregateStockHistory',       // UpdatedUser
           currentTime,                   // CreatedAt
@@ -115,7 +118,7 @@ function aggregateStockHistory() {
   
   // 寫入 StockHistory
   if (aggregatedData.length > 0) {
-    stockHistorySheet.getRange(2, 1, aggregatedData.length, 8).setValues(aggregatedData);
+    stockHistorySheet.getRange(2, 1, aggregatedData.length, 9).setValues(aggregatedData);
   }
   
   Logger.log('已處理 ' + aggregatedData.length + ' 筆資料到 StockHistory');
