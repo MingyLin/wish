@@ -35,7 +35,7 @@ function syncTeacherAttendanceToReport() {
   // include both '出席' and '試聽'
   if (attendanceVal !== '出席' && attendanceVal !== '試聽') continue;
     var teacherId = row[ti] ? String(row[ti]) : '';
-    var teacherName = teacherMap[teacherId] || teacherId;
+    var teacherName = zeroPad(teacherId, 3) + ' ' + (teacherMap[teacherId] || teacherId);
     var startStr = row[si] ? String(row[si]) : '';
     var endStr = row[ei] ? String(row[ei]) : '';
     if (!teacherName || !startStr || !endStr) continue;

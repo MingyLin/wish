@@ -1,3 +1,11 @@
+// Ensure we can zero-pad numbers in environments without String.padStart
+function zeroPad(num, width) {
+	var s = (num === undefined || num === null) ? '' : String(num);
+	if (s && typeof s.padStart === 'function') return s.padStart(width, '0');
+	var zeros = new Array(Math.max(0, width) + 1).join('0');
+	return (zeros + s).slice(-Math.max(width, s.length));
+}
+
 function syncPurchaseHistoryToReport() {
 	var srcId = '15EbnrqcDcvhlKOJ3L0cZxzRLiiZqQp-BrYSdwq1tnZ8';
 	var srcSs = SpreadsheetApp.openById(srcId);
@@ -58,7 +66,7 @@ function syncPurchaseHistoryToReport() {
 		var amount = ai >= 0 ? Number(row[ai]) : 0;
 		var updatedAtRaw = ui >= 0 ? row[ui] : '';
 
-		var studentName = idToName[studentId] || studentId || '';
+	    var studentName = zeroPad(studentId, 3) + ' ' + (idToName[studentId] || studentId || '');
 		var dateStr = '';
 		var dateYYYYMM = '';
 		if (updatedAtRaw) {
