@@ -42,8 +42,8 @@ function syncCalendarToSheet() {
     return [
       calendarId,
       ev.id || '',
-      formatTaipei(startRaw),
-      formatTaipei(endRaw),
+      format(startRaw),
+      format(endRaw),
       student,
       teacher,
       subject,
@@ -55,16 +55,16 @@ function syncCalendarToSheet() {
   }
 }
 
-function formatTaipei(dtStr) {
+function format(dtStr) {
   if (!dtStr) return '';
   var dt = new Date(dtStr);
-  // 轉換為台灣時區 (UTC+8)
-  var taipei = new Date(dt.getTime() + 8 * 60 * 60 * 1000);
-  var yyyy = taipei.getUTCFullYear();
-  var mm = ('0' + (taipei.getUTCMonth() + 1)).slice(-2);
-  var dd = ('0' + taipei.getUTCDate()).slice(-2);
-  var hh = ('0' + taipei.getUTCHours()).slice(-2);
-  var min = ('0' + taipei.getUTCMinutes()).slice(-2);
-  var ss = ('0' + taipei.getUTCSeconds()).slice(-2);
-  return yyyy + '-' + mm + '-' + dd + ' ' + hh + ':' + min + ':' + ss;
+  if (isNaN(dt.getTime())) return '';
+  // The input is already in Taiwan time — format it as-is without additional timezone shifts.
+  var yyyy = dt.getFullYear();
+  var mm = ('0' + (dt.getMonth() + 1)).slice(-2);
+  var dd = ('0' + dt.getDate()).slice(-2);
+  var hh = ('0' + dt.getHours()).slice(-2);
+  var min = ('0' + dt.getMinutes()).slice(-2);
+  var ss = ('0' + dt.getSeconds()).slice(-2);
+  return yyyy + '-' + mm + '-' + dd + ' ' + hh + ':' + min;
 }
