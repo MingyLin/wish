@@ -30,8 +30,10 @@ function syncTeacherAttendanceToReport() {
   // 過濾出席資料，並依老師+日期分組，只合併重疊或連續時段
   var groupMap = {};
   for (var i = 0; i < rows.length; i++) {
-    var row = rows[i];
-    if (!row[ai] || String(row[ai]).trim() !== '出席') continue;
+  var row = rows[i];
+  var attendanceVal = row[ai] ? String(row[ai]).trim() : '';
+  // include both '出席' and '試聽'
+  if (attendanceVal !== '出席' && attendanceVal !== '試聽') continue;
     var teacherId = row[ti] ? String(row[ti]) : '';
     var teacherName = teacherMap[teacherId] || teacherId;
     var startStr = row[si] ? String(row[si]) : '';
@@ -115,20 +117,20 @@ function syncTeacherAttendanceToReport() {
     
     // 若是 Date 物件
     if (Object.prototype.toString.call(dtVal) === '[object Date]' && !isNaN(dtVal.getTime())) {
-      dt = new Date(dtVal.getTime() - 15 * 60 * 60 * 1000); // 減少15小時
+      dt = new Date(dtVal.getTime());
     }
     // 若是字串，先解析再減少15小時
     else if (typeof dtVal === 'string') {
       var tempDt = new Date(dtVal);
       if (!isNaN(tempDt.getTime())) {
-        dt = new Date(tempDt.getTime() - 15 * 60 * 60 * 1000);
+        dt = new Date(tempDt.getTime());
       }
     }
     // Google Sheets 內部日期數字
     else if (typeof dtVal === 'number') {
       var tempDt = new Date(Math.round((dtVal - 25569) * 86400 * 1000));
       if (!isNaN(tempDt.getTime())) {
-        dt = new Date(tempDt.getTime() - 15 * 60 * 60 * 1000);
+        dt = new Date(tempDt.getTime());
       }
     }
     
