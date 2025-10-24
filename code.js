@@ -417,7 +417,7 @@ function saveAttendanceField(e) {
   else if (attendance === '缺席') colorId = '11';
   else if (attendance === '補課') colorId = '6';
   else if (attendance === '自習') colorId = '3';
-  else if (attendance === '試聽') colorId = '2';
+  else if (attendance === '試聽') colorId = '7';
   if (!eventId) {
     return CardService.newActionResponseBuilder().setNavigation(CardService.newNavigation().pushCard(createInfoCard('找不到事件 ID，無法儲存點名。'))).build();
   }
