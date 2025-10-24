@@ -52,11 +52,12 @@ function syncTeacherAttendanceToReport() {
     }
     
     var baseKey = teacherName + '|' + dateKey;
-    var merged = false;
+    var merged = false; 
     
     // 檢查是否可與現有時段合併
     for (var existingKey in groupMap) {
-      if (!existingKey.startsWith(baseKey + '|')) continue;
+      // Apps Script environment may not support String.startsWith on all runtimes; coerce to string and use indexOf
+      if (String(existingKey).indexOf(baseKey + '|') !== 0) continue;
       var existing = groupMap[existingKey];
       
       // 檢查時段是否重疊或連續
