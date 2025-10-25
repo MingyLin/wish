@@ -128,13 +128,14 @@ function fetchSheetOptions(sheetId, range, includeThirdColumn) {
       var row = values[i];
       if (row[0] && row[1]) {
         var option = { id: String(row[0]), name: String(row[1]) };
-        if (includeThirdColumn && row[2]) {
-          option.entranceYear = row[2];
-          var y = Number(row[2]);
-          if (!isNaN(y)) {
-            option.name = option.id + '.' + option.name + '(' + (new Date().getFullYear() - 1903 - (new Date().getMonth() > 8 ? 1 : 0) - y) + ')';
+        // For students, the 3rd column is treated as Grade (數字) and shown directly
+        if (includeThirdColumn && row[2] !== undefined && row[2] !== '') {
+          option.grade = row[2];
+          var gnum = Number(row[2]);
+          if (!isNaN(gnum)) {
+            option.name = option.id + '.' + option.name + '(' + gnum + ')';
           } else {
-            option.name = option.id + '.' + option.name;
+            option.name = option.id + '.' + option.name + '(' + String(row[2]) + ')';
           }
         } else {
           option.name = option.id + '.' + option.name;
@@ -206,6 +207,7 @@ function saveField(e) {
   for (var i = 0; i < studentOptions.length; i++) {
     if (studentOptions[i].id === studentId) {
       studentName = studentOptions[i].name;
+      var studentGrade = studentOptions[i].grade !== undefined ? studentOptions[i].grade : '';
       break;
     }
   }
@@ -247,6 +249,7 @@ function saveField(e) {
     
     if (field === 'student') {
       resource.extendedProperties.private.student = studentId;
+      resource.extendedProperties.private.grade = studentGrade || '';
       resource.summary = studentName + '-' + currentSubject + '(' + currentTeacherName + ')';
     } else if (field === 'teacher') {
       resource.extendedProperties.private.teacher = teacherId;
@@ -272,7 +275,8 @@ function saveField(e) {
       var masterId = event && event.recurringEventId ? event.recurringEventId : null;
       if (masterId) {
         try {
-          var timeMax = now.setMonth(now.getMonth() + 6);          
+          var timeMax = new Date();
+          timeMax.setMonth(timeMax.getMonth() + 6);
           var instancesResp = Calendar.Events.instances(calendarId, masterId, { timeMax: timeMax.toISOString(), maxResults: 2500 });
           if (instancesResp && instancesResp.items && instancesResp.items.length) {
             var items = instancesResp.items;
@@ -301,10 +305,15 @@ function saveField(e) {
 
                 // compute display names for summary
                 var finalStudentName = '';
+                var finalStudentGrade = '';
                 var finalTeacherName = '';
                 // find student name in studentOptions
                 for (var si = 0; si < studentOptions.length; si++) {
                   if (String(studentOptions[si].id) === String(finalStudentId)) { finalStudentName = studentOptions[si].name; break; }
+                }
+                // also capture grade if present
+                for (var sgi = 0; sgi < studentOptions.length; sgi++) {
+                  if (String(studentOptions[sgi].id) === String(finalStudentId) && studentOptions[sgi].grade !== undefined) { finalStudentGrade = studentOptions[sgi].grade; break; }
                 }
                 // find teacher name in teacherOptions
                 for (var ti = 0; ti < teacherOptions.length; ti++) {
@@ -314,7 +323,7 @@ function saveField(e) {
                 if (!finalStudentName) finalStudentName = currentStudentName || finalStudentId || '';
                 if (!finalTeacherName) finalTeacherName = currentTeacherName || finalTeacherId || '';
                 var resSummary = finalStudentName + '-' + (finalSubject || '') + '(' + finalTeacherName + ')';
-                var resourceForInst = { summary: resSummary, extendedProperties: { private: { student: finalStudentId, teacher: finalTeacherId, subject: finalSubject } }, colorId: '1' };
+                var resourceForInst = { summary: resSummary, extendedProperties: { private: { student: finalStudentId, teacher: finalTeacherId, subject: finalSubject, grade: finalStudentGrade || (inst.extendedProperties && inst.extendedProperties.private && inst.extendedProperties.private.grade) || '' } }, colorId: '1' };
                 // patch and remember to sync later
                 Calendar.Events.patch(resourceForInst, calendarId, inst.id);
 
@@ -327,6 +336,7 @@ function saveField(e) {
           }
         } catch (err2) {
           Logger.log('Error updating future instances: %s', err2.message);
+          return CardService.newActionResponseBuilder().setNavigation(CardService.newNavigation().pushCard(createInfoCard('儲存失敗：' + err.message))).build();
         }
       } else {
         Calendar.Events.patch(resource, calendarId, eventId);
@@ -335,14 +345,9 @@ function saveField(e) {
       var masterId = event && event.recurringEventId ? event.recurringEventId : null;
       if (masterId) {
         try {
-          // limit instances to a 6-month window to avoid fetching huge series
-          var eventStartRaw = event.start && (event.start.dateTime || event.start.date) || null;
-          var now = new Date();
-          var startDateObj = eventStartRaw ? new Date(eventStartRaw) : now;
-          var timeMin = startDateObj > now ? startDateObj : now;
-          var timeMax = new Date(timeMin);
+          var timeMax = new Date();
           timeMax.setMonth(timeMax.getMonth() + 6);
-          var instancesResp = Calendar.Events.instances(calendarId, masterId, { timeMin: timeMin.toISOString(), timeMax: timeMax.toISOString(), maxResults: 2500 });
+          var instancesResp = Calendar.Events.instances(calendarId, masterId, { timeMax: timeMax.toISOString(), maxResults: 2500 });
           if (instancesResp && instancesResp.items && instancesResp.items.length) {
             var items = instancesResp.items;
             var eventsToWrite = [];
@@ -373,18 +378,24 @@ function saveField(e) {
                 if (!finalStudentName) finalStudentName = currentStudentName || finalStudentId || '';
                 if (!finalTeacherName) finalTeacherName = currentTeacherName || finalTeacherId || '';
                 var resSummary2 = finalStudentName + '-' + (finalSubject || '') + '(' + finalTeacherName + ')';
-                var resourceForInst = { summary: resSummary2, extendedProperties: { private: { student: finalStudentId, teacher: finalTeacherId, subject: finalSubject } }, colorId: '1' };
+                var finalStudentGrade = '';
+                for (var sgi3 = 0; sgi3 < studentOptions.length; sgi3++) {
+                  if (String(studentOptions[sgi3].id) === String(finalStudentId) && studentOptions[sgi3].grade !== undefined) { finalStudentGrade = studentOptions[sgi3].grade; break; }
+                }
+                var resourceForInst = { summary: resSummary2, extendedProperties: { private: { student: finalStudentId, teacher: finalTeacherId, subject: finalSubject, grade: finalStudentGrade || (inst.extendedProperties && inst.extendedProperties.private && inst.extendedProperties.private.grade) || '' } }, colorId: '1' };
                 Calendar.Events.patch(resourceForInst, calendarId, inst.id);
 
                 var attendanceInst = (inst.extendedProperties && inst.extendedProperties.private && inst.extendedProperties.private.attendance) || '未點名';
                 eventsToWrite.push({ calendarId: calendarId, eventId: inst.id, startDatetime: inst.start && (inst.start.dateTime || inst.start.date), endDatetime: inst.end && (inst.end.dateTime || inst.end.date), student: finalStudentId, teacher: finalTeacherId, subject: finalSubject, attendance: attendanceInst });
               } catch (errInst) {
                 Logger.log('Failed to patch instance %s: %s', inst.id, errInst.message);
+                return CardService.newActionResponseBuilder().setNavigation(CardService.newNavigation().pushCard(createInfoCard('儲存失敗：' + errInst.message))).build();
               }
             }
           }
         } catch (err2) {
           Logger.log('Error updating recurring instances: %s', err2.message);
+          return CardService.newActionResponseBuilder().setNavigation(CardService.newNavigation().pushCard(createInfoCard('儲存失敗：' + err2.message))).build();
         }
       } else {
         Calendar.Events.patch(resource, calendarId, eventId);
