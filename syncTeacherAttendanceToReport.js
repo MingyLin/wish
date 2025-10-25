@@ -15,6 +15,31 @@ function syncTeacherAttendanceToReport() {
     if (id) teacherMap[id] = name;
   }
 
+  // 取得 Student ID->Grade 對照表（如果有 Students 分頁）
+  var studentGradeMap = {};
+  var studentsSheet = srcSs.getSheetByName('Students');
+  if (studentsSheet) {
+    var sData = studentsSheet.getDataRange().getValues();
+    if (sData.length > 1) {
+      var sHeader = sData[0] || [];
+      var gradeIdx = -1;
+      var idIdx = 0;
+      for (var sh = 0; sh < sHeader.length; sh++) {
+        var key = String(sHeader[sh] || '').toLowerCase();
+        if (key === 'grade' || key === '年級' || key === 'gradelevel') gradeIdx = sh;
+        if (key === 'id' || key === 'student' || key === 'studentid' || key === '學號') idIdx = sh;
+      }
+      if (gradeIdx === -1) gradeIdx = 2; // fallback to column C if header not explicit
+      for (var sr = 1; sr < sData.length; sr++) {
+        var srow = sData[sr];
+        var sid = srow[idIdx] !== undefined ? String(srow[idIdx]) : '';
+        var gval = srow[gradeIdx];
+        var gnum = Number(gval);
+        if (sid) studentGradeMap[sid] = isNaN(gnum) ? String(gval) : gnum;
+      }
+    }
+  }
+
   // 取得 CalendarEvents 資料
   var data = eventsSheet.getDataRange().getValues();
   if (data.length <= 1) return;
@@ -24,18 +49,22 @@ function syncTeacherAttendanceToReport() {
   for (var h = 0; h < header.length; h++) idx[header[h]] = h;
   var ti = idx['Teacher'] || idx['teacher'];
   var ai = idx['Attendance'] || idx['attendance'];
+  var sti = idx['Student'] || idx['student'] || idx['StudentId'] || idx['studentId'] || idx['學號'];
   var si = idx['StartDatetime'] || idx['startDatetime'] || idx['startdatetime'];
   var ei = idx['EndDatetime'] || idx['endDatetime'] || idx['enddatetime'];
 
   // 過濾出席資料，並依老師+日期分組，只合併重疊或連續時段
   var groupMap = {};
   for (var i = 0; i < rows.length; i++) {
-  var row = rows[i];
-  var attendanceVal = row[ai] ? String(row[ai]).trim() : '';
-  // include both '出席' and '試聽'
-  if (attendanceVal !== '出席' && attendanceVal !== '試聽') continue;
+    var row = rows[i];
+    var attendanceVal = row[ai] ? String(row[ai]).trim() : '';
+    // include both '出席' and '試聽'
+    if (attendanceVal !== '出席' && attendanceVal !== '試聽') continue;
     var teacherId = row[ti] ? String(row[ti]) : '';
-    var teacherName = zeroPad(teacherId, 3) + ' ' + (teacherMap[teacherId] || teacherId);
+    var teacherName = zeroPad && typeof zeroPad === 'function' ? zeroPad(teacherId, 3) + ' ' + (teacherMap[teacherId] || teacherId) : (teacherMap[teacherId] || teacherId);
+    var studentId = sti !== undefined ? (row[sti] ? String(row[sti]) : '') : '';
+    var gradeVal = studentId && studentGradeMap[studentId] !== undefined ? studentGradeMap[studentId] : '';
+    var gradeGroupVal = getGradeGroup(gradeVal);
     var startStr = row[si] ? String(row[si]) : '';
     var endStr = row[ei] ? String(row[ei]) : '';
     if (!teacherName || !startStr || !endStr) continue;
@@ -53,7 +82,7 @@ function syncTeacherAttendanceToReport() {
       dateKey = startStr.substr(0, 10);
     }
     
-    var baseKey = teacherName + '|' + dateKey;
+  var baseKey = teacherName + '|' + gradeGroupVal + '|' + dateKey;
     var merged = false; 
     
     // 檢查是否可與現有時段合併
@@ -80,7 +109,7 @@ function syncTeacherAttendanceToReport() {
         counter++;
         newKey = baseKey + '|' + counter;
       }
-      groupMap[newKey] = { teacher: teacherName, date: dateKey, start: startStr, end: endStr };
+      groupMap[newKey] = { teacher: teacherName, grade: gradeGroupVal, date: dateKey, start: startStr, end: endStr };
     }
   }
   
@@ -102,48 +131,31 @@ function syncTeacherAttendanceToReport() {
 
   // 整理輸出
   var out = [];
+  // build sortable array and include grade
+  var tmp = [];
   for (var k in groupMap) {
     var g = groupMap[k];
     var hour = calcHour(g.start, g.end);
     var startFmt = formatDateTimeStr(g.start);
     var endFmt = formatDateTimeStr(g.end);
-    // 強制轉為字串避免 Date 物件被自動格式化
-    out.push([String(g.teacher), String(startFmt), String(endFmt), String(hour)]);
+    tmp.push({ teacher: String(g.teacher), grade: String(g.grade || ''), startRaw: g.start, startFmt: String(startFmt), endFmt: String(endFmt), hour: String(hour) });
   }
 
-  // 時間格式 yyyy/MM/dd HH:mm (減少15小時修正時區)
-  function formatDateTimeStr(dtVal) {
-    var dt = null;
-    
-    // 若是 Date 物件
-    if (Object.prototype.toString.call(dtVal) === '[object Date]' && !isNaN(dtVal.getTime())) {
-      dt = new Date(dtVal.getTime());
-    }
-    // 若是字串，先解析再減少15小時
-    else if (typeof dtVal === 'string') {
-      var tempDt = new Date(dtVal);
-      if (!isNaN(tempDt.getTime())) {
-        dt = new Date(tempDt.getTime());
-      }
-    }
-    // Google Sheets 內部日期數字
-    else if (typeof dtVal === 'number') {
-      var tempDt = new Date(Math.round((dtVal - 25569) * 86400 * 1000));
-      if (!isNaN(tempDt.getTime())) {
-        dt = new Date(tempDt.getTime());
-      }
-    }
-    
-    if (dt && !isNaN(dt.getTime())) {
-      var yyyy = dt.getFullYear();
-      var mm = ('0' + (dt.getMonth() + 1)).slice(-2);
-      var dd = ('0' + dt.getDate()).slice(-2);
-      var hh = ('0' + dt.getHours()).slice(-2);
-      var min = ('0' + dt.getMinutes()).slice(-2);
-      return yyyy + '/' + mm + '/' + dd + ' ' + hh + ':' + min;
-    }
-    
-    return String(dtVal);
+  // sort by teacher, grade (小, 中, 大, 其他), start time
+  var gradeOrder = { '小': 0, '中': 1, '大': 2 };
+  tmp.sort(function(a, b) {
+    if (a.teacher < b.teacher) return -1;
+    if (a.teacher > b.teacher) return 1;
+    var ga = gradeOrder[a.grade] !== undefined ? gradeOrder[a.grade] : 99;
+    var gb = gradeOrder[b.grade] !== undefined ? gradeOrder[b.grade] : 99;
+    if (ga < gb) return -1;
+    if (ga > gb) return 1;
+    return compareTime(a.startRaw, b.startRaw);
+  });
+
+  for (var tii = 0; tii < tmp.length; tii++) {
+    var e = tmp[tii];
+    out.push([e.teacher, e.grade, e.startFmt, e.endFmt, e.hour]);
   }
 
   // 寫入目標 teacher 分頁
@@ -152,7 +164,7 @@ function syncTeacherAttendanceToReport() {
   var destSheet = destSs.getSheetByName('teacher');
   if (!destSheet) destSheet = destSs.insertSheet('teacher');
   destSheet.clear();
-  destSheet.appendRow(['老師', '開始時間', '結束時間', '時數']);
+  destSheet.appendRow(['老師', 'Grade', '開始時間', '結束時間', '時數']);
   if (out.length) destSheet.getRange(2, 1, out.length, out[0].length).setValues(out);
 }
 
@@ -169,4 +181,51 @@ function calcHour(start, end) {
     if (isNaN(t1.getTime()) || isNaN(t2.getTime())) return '';
     var diff = (t2 - t1) / (1000 * 60 * 60);
     return Math.round(diff * 10) / 10;
+}
+
+function formatDateTimeStr(dtVal) {
+  var dt = null;
+  
+  // 若是 Date 物件
+  if (Object.prototype.toString.call(dtVal) === '[object Date]' && !isNaN(dtVal.getTime())) {
+    dt = new Date(dtVal.getTime());
+  }
+  else if (typeof dtVal === 'string') {
+    var tempDt = new Date(dtVal);
+    if (!isNaN(tempDt.getTime())) {
+      dt = new Date(tempDt.getTime());
+    }
+  }
+  else if (typeof dtVal === 'number') {
+    var tempDt = new Date(Math.round((dtVal - 25569) * 86400 * 1000));
+    if (!isNaN(tempDt.getTime())) {
+      dt = new Date(tempDt.getTime());
+    }
+  }
+  
+  if (dt && !isNaN(dt.getTime())) {
+    var yyyy = dt.getFullYear();
+    var mm = ('0' + (dt.getMonth() + 1)).slice(-2);
+    var dd = ('0' + dt.getDate()).slice(-2);
+    var hh = ('0' + dt.getHours()).slice(-2);
+    var min = ('0' + dt.getMinutes()).slice(-2);
+    return yyyy + '/' + mm + '/' + dd + ' ' + hh + ':' + min;
+  }
+  
+  return String(dtVal);
+}
+
+// Map a student grade value to a grade group string: '小' (<=6), '中' (7-9), '大' (>=10)
+function getGradeGroup(gradeVal) {
+  if (gradeVal === null || gradeVal === undefined || gradeVal === '') return '';
+  var n = Number(gradeVal);
+  if (!isNaN(n)) {
+    if (n <= 6) return '小';
+    if (n >= 7 && n <= 9) return '中';
+    if (n >= 10) return '高';
+  }
+  // If it's already one of the labels, return normalized
+  var s = String(gradeVal).trim();
+  if (s === '小' || s === '中' || s === '高') return s;
+  return '';
 }

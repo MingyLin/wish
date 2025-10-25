@@ -6,7 +6,7 @@ function syncCalendarToSheet() {
   var sheet = ss.getSheetByName(sheetName);
   if (!sheet) sheet = ss.insertSheet(sheetName);
 
-  var header = ['CalendarId', 'EventId', 'StartDatetime', 'EndDatetime', 'Student', 'Teacher', 'Subject', 'Attendance'];
+  var header = ['CalendarId', 'EventId', 'StartDatetime', 'EndDatetime', 'Student', 'Teacher', 'Subject', 'Grade', 'Attendance'];
   sheet.clear();
   sheet.appendRow(header);
 
@@ -36,6 +36,7 @@ function syncCalendarToSheet() {
     var student = (ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.student) || '';
     var teacher = (ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.teacher) || '';
     var attendance = (ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.attendance) || '未點名';
+    var grade = (ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.grade) || '';
     var startRaw = ev.start && (ev.start.dateTime || ev.start.date) || '';
     var endRaw = ev.end && (ev.end.dateTime || ev.end.date) || '';
     var subject = (ev.extendedProperties && ev.extendedProperties.private && ev.extendedProperties.private.subject) || '';
@@ -47,6 +48,7 @@ function syncCalendarToSheet() {
       student,
       teacher,
       subject,
+      grade,
       attendance
     ];
   });
