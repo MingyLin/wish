@@ -15,14 +15,6 @@
         "serviceId": "sheets",
         "version": "v4"
       }
-    ],
-    "libraries": [
-      {
-        "userSymbol": "syncCalendarToSheet",
-        "version": "0",
-        "libraryId": "1oJk7VaWGUzJ5A2EUGcQSUpxHkmu98XeHl0tkIQ7d6hdJHRIAQvw-zGkU",
-        "developmentMode": true
-      }
     ]
   },
   "oauthScopes": [
@@ -37,7 +29,7 @@
   ],
   "addOns": {
     "common": {
-      "name": "栩苑點點名",
+      "name": "栩苑點點名-測試版",
       "logoUrl": "https://lh3.googleusercontent.com/d/1kRYnmIH6KmxkN6--zSi9eKP-1g4yN8MK=w1366?authuser=0",
       "useLocaleFromApp": true
     },

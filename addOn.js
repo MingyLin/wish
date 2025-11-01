@@ -229,7 +229,8 @@ function saveField(e) {
   }
   try {
     var event = Calendar.Events.get(calendarId, eventId);
-    var resource = { extendedProperties: { private: {} }, colorId: '1' };
+    var resource = { extendedProperties: { private: {} } };
+    if (event && event.colorId) resource.colorId = event.colorId;
     
     // 取得目前事件的學生、老師、科目資訊
     var currentStudentId = (event.extendedProperties && event.extendedProperties.private && event.extendedProperties.private.student) || '';
@@ -256,14 +257,34 @@ function saveField(e) {
     
     if (field === 'student') {
       resource.extendedProperties.private.student = studentId;
-      resource.extendedProperties.private.grade = studentGrade || '';
-      resource.summary = studentName + '-' + currentSubject + '(' + currentTeacherName + ')';
+      var setGrade = studentGrade || '';
+      if (setGrade) {
+        var parsedGrade = Number(setGrade);
+        if (!isNaN(parsedGrade)) {
+          var now = new Date();
+          var nowMonth = now.getMonth() + 1;
+          var evtStartStr = event.start && (event.start.dateTime || event.start.date) || '';
+          if (evtStartStr) {
+            var evtDate = new Date(evtStartStr);
+            var evtMonth = evtDate.getMonth() + 1;
+            if (nowMonth <= 6 && evtMonth >= 7) {
+              parsedGrade = parsedGrade + 1;
+            }
+          }
+          setGrade = String(parsedGrade);
+        }
+      }
+      resource.extendedProperties.private.grade = setGrade || '';
+      var singleGrade = resource.extendedProperties.private.grade || (event.extendedProperties && event.extendedProperties.private && event.extendedProperties.private.grade) || '';
+      resource.summary = studentName + '-' + currentSubject + '(' + currentTeacherName + ')-(' + singleGrade + ')';
     } else if (field === 'teacher') {
       resource.extendedProperties.private.teacher = teacherId;
-      resource.summary = currentStudentName + '-' + currentSubject + '(' + teacherName + ')';
+      var singleGradeT = (event.extendedProperties && event.extendedProperties.private && event.extendedProperties.private.grade) || '';
+      resource.summary = currentStudentName + '-' + currentSubject + '(' + teacherName + ')-(' + singleGradeT + ')';
     } else if (field === 'subject') {
       resource.extendedProperties.private.subject = subjectId;
-      resource.summary = currentStudentName + '-' + subjectName + '(' + currentTeacherName + ')';
+      var singleGradeS = (event.extendedProperties && event.extendedProperties.private && event.extendedProperties.private.grade) || '';
+      resource.summary = currentStudentName + '-' + subjectName + '(' + currentTeacherName + ')-(' + singleGradeS + ')';
     }
 
     if ((field === 'teacher' || field === 'student' || field === 'subject') && updateType === 'single') {
@@ -330,7 +351,22 @@ function saveField(e) {
                 if (!finalStudentName) finalStudentName = currentStudentName || finalStudentId || '';
                 if (!finalTeacherName) finalTeacherName = currentTeacherName || finalTeacherId || '';
                 var resSummary = finalStudentName + '-' + (finalSubject || '') + '(' + finalTeacherName + ')';
-                var resourceForInst = { summary: resSummary, extendedProperties: { private: { student: finalStudentId, teacher: finalTeacherId, subject: finalSubject, grade: finalStudentGrade || (inst.extendedProperties && inst.extendedProperties.private && inst.extendedProperties.private.grade) || '' } }, colorId: '1' };
+                var baseGrade = finalStudentGrade || (inst.extendedProperties && inst.extendedProperties.private && inst.extendedProperties.private.grade) || '';
+                if (baseGrade) {
+                  var parsedBase = Number(baseGrade);
+                  if (!isNaN(parsedBase)) {
+                    var nowDate = new Date();
+                    var nowM = nowDate.getMonth() + 1;
+                    var instStart = inst.start && (inst.start.dateTime || inst.start.date) || '';
+                    if (instStart) {
+                      var instDate = new Date(instStart);
+                      var instM = instDate.getMonth() + 1;
+                      if (nowM <= 6 && instM >= 7) parsedBase = parsedBase + 1;
+                    }
+                    baseGrade = String(parsedBase);
+                  }
+                }
+                var resourceForInst = { summary: resSummary + '-(' + (baseGrade || '') + ')', extendedProperties: { private: { student: finalStudentId, teacher: finalTeacherId, subject: finalSubject, grade: baseGrade || '' } }, colorId: '1' };
                 // patch and remember to sync later
                 Calendar.Events.patch(resourceForInst, calendarId, inst.id);
 
@@ -389,7 +425,22 @@ function saveField(e) {
                 for (var sgi3 = 0; sgi3 < studentOptions.length; sgi3++) {
                   if (String(studentOptions[sgi3].id) === String(finalStudentId) && studentOptions[sgi3].grade !== undefined) { finalStudentGrade = studentOptions[sgi3].grade; break; }
                 }
-                var resourceForInst = { summary: resSummary2, extendedProperties: { private: { student: finalStudentId, teacher: finalTeacherId, subject: finalSubject, grade: finalStudentGrade || (inst.extendedProperties && inst.extendedProperties.private && inst.extendedProperties.private.grade) || '' } }, colorId: '1' };
+                var baseGrade2 = finalStudentGrade || (inst.extendedProperties && inst.extendedProperties.private && inst.extendedProperties.private.grade) || '';
+                if (baseGrade2) {
+                  var parsedBase2 = Number(baseGrade2);
+                  if (!isNaN(parsedBase2)) {
+                    var nowDate2 = new Date();
+                    var nowM2 = nowDate2.getMonth() + 1;
+                    var instStart2 = inst.start && (inst.start.dateTime || inst.start.date) || '';
+                    if (instStart2) {
+                      var instDate2 = new Date(instStart2);
+                      var instM2 = instDate2.getMonth() + 1;
+                      if (nowM2 <= 6 && instM2 >= 7) parsedBase2 = parsedBase2 + 1;
+                    }
+                    baseGrade2 = String(parsedBase2);
+                  }
+                }
+                var resourceForInst = { summary: resSummary2 + '-(' + (baseGrade2 || '') + ')', extendedProperties: { private: { student: finalStudentId, teacher: finalTeacherId, subject: finalSubject, grade: baseGrade2 || '' } }, colorId: '1' };
                 Calendar.Events.patch(resourceForInst, calendarId, inst.id);
 
                 var attendanceInst = (inst.extendedProperties && inst.extendedProperties.private && inst.extendedProperties.private.attendance) || '未點名';
