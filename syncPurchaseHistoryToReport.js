@@ -7,14 +7,14 @@ function zeroPad(num, width) {
 }
 
 function syncPurchaseHistoryToReport() {
-	var srcId = '15EbnrqcDcvhlKOJ3L0cZxzRLiiZqQp-BrYSdwq1tnZ8';
+
+	var srcId = getConfig().mainSheetId;
 	var srcSs = SpreadsheetApp.openById(srcId);
 	var srcSheet = srcSs.getSheetByName('StockHistory');
 	if (!srcSheet) {
 		throw new Error('找不到來源分頁 StockHistory');
 	}
 
-	// 讀取 Students 對照表
 	var studentsSheet = srcSs.getSheetByName('Students');
 	var idToName = {};
 	if (studentsSheet) {
@@ -27,7 +27,6 @@ function syncPurchaseHistoryToReport() {
 		}
 	}
 
-	// 讀取來源資料（假設有 header）
 	var data = srcSheet.getDataRange().getValues();
 	if (data.length <= 1) {
 		// 沒資料
@@ -102,8 +101,9 @@ function syncPurchaseHistoryToReport() {
 }
 
 function writeToDest(rows) {
-    var destId = '1EsDKBw0malhT8o0s_OF28QMnNfScTerF-FK-9W36GOE';
-    var destSs = SpreadsheetApp.openById(destId);
+
+	var destId = getConfig().stockReportDestId;
+	var destSs = SpreadsheetApp.openById(destId);
     var destSheet = destSs.getSheetByName('stock');
     if (!destSheet) destSheet = destSs.insertSheet('stock');
     // 清空並寫入 header + rows

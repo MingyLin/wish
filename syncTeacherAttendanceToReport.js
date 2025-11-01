@@ -1,5 +1,6 @@
 function syncTeacherAttendanceToReport() {
-  var srcId = '15EbnrqcDcvhlKOJ3L0cZxzRLiiZqQp-BrYSdwq1tnZ8';
+
+  var srcId = getConfig().mainSheetId;
   var srcSs = SpreadsheetApp.openById(srcId);
   var eventsSheet = srcSs.getSheetByName('CalendarEvents');
   var teachersSheet = srcSs.getSheetByName('Teachers');
@@ -141,30 +142,34 @@ function syncTeacherAttendanceToReport() {
     tmp.push({ teacher: String(g.teacher), grade: String(g.grade || ''), startRaw: g.start, startFmt: String(startFmt), endFmt: String(endFmt), hour: String(hour) });
   }
 
-  // sort by teacher, grade (小, 中, 大, 其他), start time
-  var gradeOrder = { '小': 0, '中': 1, '大': 2 };
+  // sort by teacher, then start time, then grade (小, 中, 高, 其他)
+  var gradeOrder = { '小': 0, '中': 1, '高': 2 };
   tmp.sort(function(a, b) {
     if (a.teacher < b.teacher) return -1;
     if (a.teacher > b.teacher) return 1;
+    // same teacher: first sort by start time
+    var tcmp = compareTime(a.startRaw, b.startRaw);
+    if (tcmp !== 0) return tcmp;
+    // then by grade
     var ga = gradeOrder[a.grade] !== undefined ? gradeOrder[a.grade] : 99;
     var gb = gradeOrder[b.grade] !== undefined ? gradeOrder[b.grade] : 99;
     if (ga < gb) return -1;
     if (ga > gb) return 1;
-    return compareTime(a.startRaw, b.startRaw);
+    return 0;
   });
 
   for (var tii = 0; tii < tmp.length; tii++) {
     var e = tmp[tii];
-    out.push([e.teacher, e.grade, e.startFmt, e.endFmt, e.hour]);
+    out.push([e.teacher, e.startFmt, e.endFmt, e.grade, e.hour]);
   }
 
   // 寫入目標 teacher 分頁
-  var destId = '1EsDKBw0malhT8o0s_OF28QMnNfScTerF-FK-9W36GOE';
+  var destId = getConfig().teacherReportDestId;
   var destSs = SpreadsheetApp.openById(destId);
   var destSheet = destSs.getSheetByName('teacher');
   if (!destSheet) destSheet = destSs.insertSheet('teacher');
   destSheet.clear();
-  destSheet.appendRow(['老師', 'Grade', '開始時間', '結束時間', '時數']);
+  destSheet.appendRow(['老師', '開始時間', '結束時間', 'School Level', '時數']);
   if (out.length) destSheet.getRange(2, 1, out.length, out[0].length).setValues(out);
 }
 
@@ -215,7 +220,7 @@ function formatDateTimeStr(dtVal) {
   return String(dtVal);
 }
 
-// Map a student grade value to a grade group string: '小' (<=6), '中' (7-9), '大' (>=10)
+// Map a student grade value to a grade group string: '小' (<=6), '中' (7-9), '高' (>=10)
 function getGradeGroup(gradeVal) {
   if (gradeVal === null || gradeVal === undefined || gradeVal === '') return '';
   var n = Number(gradeVal);

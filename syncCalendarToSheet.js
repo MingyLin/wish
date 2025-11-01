@@ -1,6 +1,7 @@
 function syncCalendarToSheet() {
-  var calendarId = '0a437281002a546d7e17233cefa484100bd212d88da1c792e9f162bdf1be23e3@group.calendar.google.com';
-  var sheetId = '15EbnrqcDcvhlKOJ3L0cZxzRLiiZqQp-BrYSdwq1tnZ8';
+
+  var calendarId = getConfig().allowedCalendarId;
+  var sheetId = getConfig().mainSheetId;
   var sheetName = 'CalendarEvents';
   var ss = SpreadsheetApp.openById(sheetId);
   var sheet = ss.getSheetByName(sheetName);

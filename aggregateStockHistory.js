@@ -1,5 +1,5 @@
-function aggregateStockHistory() {
-  var srcId = '15EbnrqcDcvhlKOJ3L0cZxzRLiiZqQp-BrYSdwq1tnZ8';
+function aggregateStockHistory() {  
+  var srcId = getConfig().mainSheetId;
   var srcSs = SpreadsheetApp.openById(srcId);
   
   // 取得來源分頁
@@ -116,7 +116,6 @@ function aggregateStockHistory() {
     }
   }
   
-  // 寫入 StockHistory
   if (aggregatedData.length > 0) {
     stockHistorySheet.getRange(2, 1, aggregatedData.length, 9).setValues(aggregatedData);
   }

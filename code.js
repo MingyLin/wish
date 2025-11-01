@@ -1,8 +1,14 @@
 function onEventOpen(e) {
-  var calendarId = e.calendar.calendarId;
-  var eventId = e.calendar.id;
+  var calendarId = e.calendar && e.calendar.calendarId;
+  var eventId = e.calendar && e.calendar.id;
+    
+    var ALLOWED_CALENDAR_ID = getConfig().allowedCalendarId;
+  if (calendarId !== ALLOWED_CALENDAR_ID) {
+    return [createInfoCard('僅支援指定日曆，請在對應日曆中使用。')];
+  }
+
   if (!eventId) {
-    return [createInfoCard('請選擇既有事件以使用此外掛。')];
+    return [createInfoCard('請選擇既有事件。')];
   }
   var studentValue = '';
   var teacherValue = '';
@@ -21,9 +27,9 @@ function onEventOpen(e) {
   if (!event) {
     return [createInfoCard('找不到事件資料，請先選擇既有事件。')];
   }
-  var sheetId = '15EbnrqcDcvhlKOJ3L0cZxzRLiiZqQp-BrYSdwq1tnZ8';
-  var studentOptions = fetchSheetOptions(sheetId, 'Students!A:C', true);
-  var teacherOptions = fetchSheetOptions(sheetId, 'Teachers!A:B');
+    var sheetId = getConfig().mainSheetId;
+    var studentOptions = fetchSheetOptions(sheetId, 'Students!A:C', true);
+    var teacherOptions = fetchSheetOptions(sheetId, 'Teachers!A:B');
   var subjectOptions = [
     { id: '國文', name: '國文' },
     { id: '英文', name: '英文' },
@@ -198,7 +204,8 @@ function saveField(e) {
   var subjectId = form.subject || '';
   var field = params.field;
   var updateType = params.updateType;
-  var sheetId = '15EbnrqcDcvhlKOJ3L0cZxzRLiiZqQp-BrYSdwq1tnZ8';
+  
+  var sheetId = getConfig().mainSheetId;
   var studentOptions = fetchSheetOptions(sheetId, 'Students!A:C', true);
   var teacherOptions = fetchSheetOptions(sheetId, 'Teachers!A:B');
   var studentName = '';
@@ -458,7 +465,8 @@ function saveAttendanceField(e) {
     }
 
     if (amount !== 0) {
-      var sheetId = '15EbnrqcDcvhlKOJ3L0cZxzRLiiZqQp-BrYSdwq1tnZ8';
+
+      var sheetId = getConfig().mainSheetId;
       var ss = SpreadsheetApp.openById(sheetId);
       var sheet = ss.getSheetByName('StockHistory');
       if (!sheet) sheet = ss.insertSheet('StockHistory');
